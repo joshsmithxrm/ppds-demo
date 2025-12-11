@@ -1,6 +1,6 @@
 # Power Platform Developer Suite Demo Solution
 
-A demonstration solution for Dynamics 365 CE / Dataverse that showcases the capabilities of the [Power Platform Developer Suite](https://github.com/your-org/Power-Platform-Developer-Suite) VS Code extension.
+A demonstration solution for Dynamics 365 CE / Dataverse that showcases the capabilities of the [Power Platform Developer Suite](https://github.com/JoshSmithXRM/Power-Platform-Developer-Suite) VS Code extension.
 
 ## Purpose
 
@@ -42,7 +42,7 @@ This repository serves three main goals:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/Power-Platform-Developer-Suite-Demo-Solution.git
+git clone https://github.com/JoshSmithXRM/Power-Platform-Developer-Suite-Demo-Solution.git
 cd Power-Platform-Developer-Suite-Demo-Solution
 
 # Build the plugin projects
@@ -105,4 +105,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ## Related Projects
 
-- [Power Platform Developer Suite](https://github.com/your-org/Power-Platform-Developer-Suite) - The VS Code extension this demo showcases
+- [Power Platform Developer Suite](https://github.com/JoshSmithXRM/Power-Platform-Developer-Suite) - The VS Code extension this demo showcases
