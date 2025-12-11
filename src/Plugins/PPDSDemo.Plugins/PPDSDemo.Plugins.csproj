@@ -22,4 +22,8 @@
     <PackageReference Include="Microsoft.CrmSdk.Workflow" Version="9.0.2.*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\PPDSDemo.Entities\PPDSDemo.Entities.csproj" />
+  </ItemGroup>
+
 </Project>
