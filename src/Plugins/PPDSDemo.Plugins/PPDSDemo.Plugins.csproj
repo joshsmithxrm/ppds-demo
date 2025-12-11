@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <RootNamespace>PPDSDemo.Plugins</RootNamespace>
+    <AssemblyName>PPDSDemo.Plugins</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- TODO: Generate SNK via Visual Studio: Right-click project > Properties > Signing > Sign the assembly -->
+    <!-- <SignAssembly>true</SignAssembly> -->
+    <!-- <AssemblyOriginatorKeyFile>PPDSDemo.Plugins.snk</AssemblyOriginatorKeyFile> -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Company>Power Platform Developer Suite Demo</Company>
+    <Product>PPDSDemo Plugins</Product>
+    <Description>Plugin assembly and workflow activities for Power Platform Developer Suite Demo Solution</Description>
+    <Version>1.0.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CrmSdk.CoreAssemblies" Version="9.0.2.*" />
+    <PackageReference Include="Microsoft.CrmSdk.Workflow" Version="9.0.2.*" />
+  </ItemGroup>
+
+</Project>

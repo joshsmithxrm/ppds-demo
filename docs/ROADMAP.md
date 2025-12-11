@@ -27,26 +27,25 @@ This document tracks what needs to be built for this demo solution. Check items 
 ## Phase 2: C# Projects Setup
 
 ### Plugin Assembly (Classic)
-- [ ] Create src/Plugins/PPDSDemo.Plugins/PPDSDemo.Plugins.csproj (.NET Framework 4.6.2)
-- [ ] Add NuGet references (Microsoft.CrmSdk.CoreAssemblies)
-- [ ] Create folder structure (Plugins/, Services/, Entities/)
-- [ ] Create base plugin class with common patterns
-- [ ] Create 2-3 example plugins:
-  - [ ] AccountPreCreatePlugin - Validation example
-  - [ ] ContactPostUpdatePlugin - Audit/logging example
-  - [ ] Generic plugin showing image handling
+- [x] Create src/Plugins/PPDSDemo.Plugins/PPDSDemo.Plugins.csproj (.NET Framework 4.6.2)
+- [x] Add NuGet references (Microsoft.CrmSdk.CoreAssemblies, Microsoft.CrmSdk.Workflow)
+- [x] Create folder structure (Plugins/, WorkflowActivities/, Services/)
+- [x] Create base plugin class with common patterns (PluginBase.cs, LocalPluginContext)
+- [x] Create 2-3 example plugins:
+  - [x] AccountPreCreatePlugin - Validation example
+  - [x] ContactPostUpdatePlugin - Audit/logging example with pre-image handling
+- [x] Create workflow activity in same assembly:
+  - [x] SendNotificationActivity - Shows input/output arguments
 
 ### Plugin Package (Modern)
-- [ ] Create src/PluginPackages/PPDSDemo.PluginPackage/ using `pac plugin init`
-- [ ] Add example plugin with NuGet dependency (e.g., Newtonsoft.Json)
+- [x] Create src/PluginPackages/PPDSDemo.PluginPackage/ using `pac plugin init`
+- [x] Add example plugin with NuGet dependency (Newtonsoft.Json)
 - [ ] Document the difference between classic and package approach
 
 ### Workflow Activities
-- [ ] Create src/WorkflowActivities/PPDSDemo.Workflow/PPDSDemo.Workflow.csproj
-- [ ] Add NuGet references (Microsoft.CrmSdk.Workflow)
-- [ ] Create 1-2 example activities:
-  - [ ] SendNotificationActivity - Shows input/output arguments
-  - [ ] CalculateValueActivity - Shows business logic in workflow
+- [x] Workflow activities included in PPDSDemo.Plugins assembly (common pattern)
+- [x] SendNotificationActivity - Shows input/output arguments
+- [ ] CalculateValueActivity - Shows business logic in workflow (optional)
 
 ### Custom APIs
 - [ ] Create src/CustomAPIs/PPDSDemo.CustomAPIs/PPDSDemo.CustomAPIs.csproj
