@@ -1,0 +1,137 @@
+# =============================================================================
+# Power Platform Production Deployment
+# =============================================================================
+# Deploys managed solution to Production environment when main branch is updated.
+#
+# Triggered by:
+# - Push to main branch (with solution changes)
+# - Manual workflow dispatch
+#
+# Uses PAC CLI directly for reliability and portability.
+#
+# =============================================================================
+# GITHUB ENVIRONMENT REQUIRED
+# =============================================================================
+#
+# Prod Environment:
+#   Variables:
+#     - POWERPLATFORM_ENVIRONMENT_URL: https://orgZZZZZ.crm.dynamics.com/
+#     - POWERPLATFORM_TENANT_ID: your-tenant-id
+#     - POWERPLATFORM_CLIENT_ID: your-service-principal-app-id
+#   Secrets:
+#     - POWERPLATFORM_CLIENT_SECRET: your-service-principal-secret
+#   Protection Rules (recommended):
+#     - Required reviewers: 1+
+#
+# =============================================================================
+
+name: Deploy to Production
+
+on:
+  # Deploy when main branch is updated with solution changes
+  push:
+    branches:
+      - main
+    paths:
+      - 'solutions/PPDSDemo/src/**'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      solution_name:
+        description: 'Solution unique name'
+        required: true
+        default: 'PPDSDemo'
+      confirm_production:
+        description: 'Type "DEPLOY" to confirm production deployment'
+        required: true
+        default: ''
+
+env:
+  SOLUTION_NAME: ${{ github.event.inputs.solution_name || 'PPDSDemo' }}
+  SOLUTION_BASE_FOLDER: solutions/PPDSDemo/src
+  SOLUTION_EXPORT_FOLDER: solutions/exports
+
+jobs:
+  # ===========================================================================
+  # DEPLOY JOB - Deploy managed solution to Production
+  # ===========================================================================
+  deploy-to-prod:
+    # For manual trigger, require confirmation
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_production == 'DEPLOY')
+    runs-on: ubuntu-latest
+    environment: Prod
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Install Power Platform CLI
+        run: |
+          dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Authenticate to Prod environment
+        run: |
+          pac auth create \
+            --environment "${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}" \
+            --tenant "${{ vars.POWERPLATFORM_TENANT_ID }}" \
+            --applicationId "${{ vars.POWERPLATFORM_CLIENT_ID }}" \
+            --clientSecret "${{ secrets.POWERPLATFORM_CLIENT_SECRET }}"
+
+      - name: Verify connection (Who Am I)
+        run: pac org who
+
+      - name: Pack Solution (Managed)
+        run: |
+          mkdir -p "${{ env.SOLUTION_EXPORT_FOLDER }}"
+          pac solution pack \
+            --zipfile "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}_managed.zip" \
+            --folder "${{ env.SOLUTION_BASE_FOLDER }}/Managed" \
+            --packagetype Managed
+
+      - name: Import Solution to Prod (Managed)
+        run: |
+          pac solution import \
+            --path "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}_managed.zip" \
+            --force-overwrite \
+            --publish-changes \
+            --async
+
+      - name: Clean up
+        run: rm -f "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}_managed.zip"
+
+      - name: Deployment Summary
+        run: |
+          echo "## Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Solution | ${{ env.SOLUTION_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | **PRODUCTION** (${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Type | Managed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | main |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Actor | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # GUARD JOB - Fail if manual trigger without confirmation
+  # ===========================================================================
+  require-confirmation:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_production != 'DEPLOY'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment not confirmed
+        run: |
+          echo "::error::Production deployment requires confirmation. Type 'DEPLOY' in the confirm_production input."
+          exit 1

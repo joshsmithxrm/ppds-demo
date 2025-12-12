@@ -58,7 +58,7 @@ Quick-reference material for common tasks.
 ## Quick Links
 
 - [CLAUDE.md](../CLAUDE.md) - AI assistant coding guide (includes documentation standards)
-- [TODO.md](../TODO.md) - Project roadmap and task tracking
+- [ROADMAP.md](../ROADMAP.md) - Project roadmap and status tracking
 - [GitHub Workflows](../.github/workflows/) - CI/CD pipeline definitions
 
 ---

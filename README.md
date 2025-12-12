@@ -4,13 +4,15 @@ A demonstration solution for Dynamics 365 CE / Dataverse that showcases the capa
 
 ## Purpose
 
-This repository serves three main goals:
+This repository serves four main goals:
 
 1. **Showcase Extension Capabilities** - Provides real-world examples of plugins, web resources, cloud flows, and other components that demonstrate what the VS Code extension can do
 
-2. **Reference Material for AI-Assisted Development** - Contains well-structured, documented patterns that AI coding assistants (like Claude) can use as reference when helping developers build Power Platform solutions
+2. **Reference Architecture / Starter Template** - Clone this repo, replace the demo content, keep the infrastructure (CI/CD, branching, docs) as a starting point for new projects
 
-3. **Best Practices Documentation** - Models proper solution structure, naming conventions, and architectural patterns for Dynamics 365 development
+3. **AI-Assisted Development Reference** - Well-structured patterns in CLAUDE.md that AI coding assistants can use when helping build Power Platform solutions
+
+4. **Educational Example** - Shows complex ALM concepts at a micro level without clutter - one correct example of each component type
 
 ## What's Included
 
@@ -78,11 +80,16 @@ pac solution pack --zipfile solutions/exports/PPDSDemo.zip --folder solutions/PP
 
 ## Documentation
 
+### Strategy (The "Why")
+- [ALM Overview](docs/strategy/ALM_OVERVIEW.md) - High-level ALM philosophy
+- [Environment Strategy](docs/strategy/ENVIRONMENT_STRATEGY.md) - Dev/QA/Prod configuration
+- [Branching Strategy](docs/strategy/BRANCHING_STRATEGY.md) - develop/main workflow
+- [Pipeline Strategy](docs/strategy/PIPELINE_STRATEGY.md) - CI/CD approach
+
+### Reference
+- [CLAUDE.md](CLAUDE.md) - AI-assistable coding patterns
 - [PAC CLI Setup](docs/tools/pac-cli.md) - Installing and configuring Power Platform CLI
-- [Solution Export Pipeline](docs/cicd/solution-export-pipeline.md) - Automated nightly export from Dataverse
-- [Plugin Development](docs/development/plugins.md) - Plugin patterns and best practices
-- [Web Resources](docs/development/web-resources.md) - JavaScript/TypeScript patterns
-- [Solution Management](docs/development/solutions.md) - Working with solutions
+- [Roadmap](ROADMAP.md) - What's complete vs. in progress
 
 ## CI/CD
 
@@ -90,9 +97,14 @@ This repository includes GitHub Actions workflows for Power Platform ALM:
 
 | Workflow | Trigger | Description |
 |----------|---------|-------------|
-| **Export Solution** | Nightly / Manual | Exports solution from Dataverse to source control |
+| **Export Solution** | Nightly / Manual | Exports from Dev, deploys to QA |
+| **Deploy to Prod** | Push to main | Deploys managed solution to Production |
 
-See [CI/CD Documentation](docs/cicd/solution-export-pipeline.md) for setup instructions.
+**Branch Flow:**
+- `develop` branch deploys to QA environment
+- `main` branch deploys to Production environment
+
+See [Pipeline Strategy](docs/strategy/PIPELINE_STRATEGY.md) for details.
 
 ## Extension Integration
 
