@@ -231,6 +231,37 @@ if (context.PostEntityImages.Contains("PostImage"))
 }
 ```
 
+### Plugin Packages (NuGet-based)
+
+Plugin packages are modern plugins that support NuGet dependencies. They require specific configuration for Dataverse registration.
+
+**PackageId Requirement:**
+
+⚠️ **IMPORTANT:** Dataverse requires the publisher prefix in the `PackageId` inside the `.nupkg` file. The `pac plugin init` command does NOT add this prefix by default.
+
+| Requirement | Example |
+|-------------|---------|
+| Format | `{publisherprefix}_{PackageName}` |
+| This solution | `ppds_PPDSDemo.PluginPackage` |
+
+**Error without prefix:**
+```
+The nuget file name does not contain a solution prefix
+```
+
+**Fix in .csproj:**
+```xml
+<PropertyGroup>
+  <!-- IMPORTANT: Dataverse requires publisher prefix in PackageId -->
+  <PackageId>ppds_PPDSDemo.PluginPackage</PackageId>
+</PropertyGroup>
+```
+
+**Why this matters:**
+- Dataverse validates the PackageId inside the nupkg (in `.nuspec`)
+- The prefix must match the solution's publisher prefix where the package will be registered
+- This is a Dataverse requirement, not a PAC CLI default
+
 ---
 
 ## Web Resource Patterns
