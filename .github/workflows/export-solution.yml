@@ -105,6 +105,12 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
+      # Install Power Platform CLI
+      # -----------------------------------------------------------------------
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      # -----------------------------------------------------------------------
       # Verify connection to Power Platform
       # -----------------------------------------------------------------------
       - name: Who Am I
