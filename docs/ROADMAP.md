@@ -21,6 +21,7 @@ This document tracks what needs to be built for this demo solution. Check items 
 - [ ] Create docs/development/custom-apis.md - Custom API patterns
 - [ ] Create docs/development/pcf.md - PCF control patterns
 - [ ] Create docs/development/testing.md - Testing strategies
+- [x] Create docs/cicd/solution-export-pipeline.md - CI/CD pipeline documentation
 
 ---
 
@@ -36,6 +37,7 @@ This document tracks what needs to be built for this demo solution. Check items 
   - [x] ContactPostUpdatePlugin - Audit/logging example with pre-image handling
 - [x] Create workflow activity in same assembly:
   - [x] SendNotificationActivity - Shows input/output arguments
+- [x] Enable strong-name signing (SNK file for Dataverse sandbox)
 
 ### Plugin Package (Modern)
 - [x] Create src/PluginPackages/PPDSDemo.PluginPackage/ using `pac plugin init`
@@ -64,13 +66,13 @@ This document tracks what needs to be built for this demo solution. Check items 
 ## Phase 3: Web Resources
 
 ### TypeScript Setup
-- [ ] Create src/WebResources/ppds_/ folder structure
+- [x] Create src/WebResources/ppds_/ folder structure
 - [ ] Set up TypeScript configuration (tsconfig.json)
 - [ ] Add Xrm typings (@types/xrm or custom)
 - [ ] Create build script for compiling TS to JS
 
 ### Form Scripts
-- [ ] Create ppds_/scripts/account.form.ts - Account form handler
+- [x] Create ppds_/scripts/account.form.js - Account form handler (JavaScript)
 - [ ] Create ppds_/scripts/contact.form.ts - Contact form handler
 - [ ] Create ppds_/scripts/common.ts - Shared utilities
 
@@ -101,9 +103,10 @@ This document tracks what needs to be built for this demo solution. Check items 
 ## Phase 5: Solution Structure
 
 ### Solution Metadata
-- [ ] Create solutions/PPDSDemo/src/ folder structure
-- [ ] Create Solution.xml with proper publisher info
-- [ ] Set up Customizations.xml
+- [x] Create solutions/PPDSDemo/src/ folder structure
+- [x] Create Solution.xml with proper publisher info (ppds prefix, PPDSDemoPublisher)
+- [x] Set up Customizations.xml
+- [x] Import solution to Dataverse
 
 ### Custom Tables
 - [ ] Define ppds_DemoEntity table (simple demo entity)
@@ -125,11 +128,13 @@ This document tracks what needs to be built for this demo solution. Check items 
 - [ ] Create ppds_FeatureFlag environment variable (boolean)
 
 ### Plugin Registration
-- [ ] Create PluginAssemblies/ registration XML
-- [ ] Create SdkMessageProcessingSteps/ step definitions
+- [x] Create PluginAssemblies/ registration XML (via export)
+- [x] Create SdkMessageProcessingSteps/ step definitions (via export)
+- [x] Deploy plugins to Dataverse (Deploy-Components.ps1)
 
 ### Web Resource Registration
-- [ ] Add web resource definitions to solution
+- [x] Add web resource definitions to solution (via export)
+- [x] Deploy web resources to Dataverse (Deploy-Components.ps1)
 
 ---
 
@@ -148,11 +153,13 @@ This document tracks what needs to be built for this demo solution. Check items 
 ### Build Scripts
 - [ ] Create tools/build.ps1 - Builds all C# projects
 - [ ] Create tools/pack-solution.ps1 - Packs solution for deployment
-- [ ] Create tools/export-solution.ps1 - Exports from Dataverse
+- [x] Create tools/Deploy-Components.ps1 - Deploys web resources and plugins to Dataverse
+- [x] Create tools/Generate-Snk.ps1 - Generates strong name keys for assembly signing
 
-### CI/CD (Optional)
-- [ ] Create .github/workflows/build.yml - Build validation
-- [ ] Create .github/workflows/release.yml - Solution packaging
+### CI/CD
+- [x] Create .github/workflows/export-solution.yml - Nightly solution export from Dataverse
+- [ ] Create .github/workflows/build.yml - Build validation on PR
+- [ ] Create .github/workflows/release.yml - Solution packaging for release
 
 ---
 
