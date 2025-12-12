@@ -419,3 +419,7 @@ FodyWeavers.xsd
 
 nul
 settings.local.json
+
+# Power Platform solution exports (zip files are build artifacts)
+solutions/exports/
+*.zip
