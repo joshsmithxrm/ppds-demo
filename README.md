@@ -88,8 +88,8 @@ pac solution pack --zipfile solutions/exports/PPDSDemo.zip --folder solutions/PP
 
 ### Reference
 - [CLAUDE.md](CLAUDE.md) - AI-assistable coding patterns
-- [PAC CLI Setup](docs/tools/pac-cli.md) - Installing and configuring Power Platform CLI
-- [Roadmap](ROADMAP.md) - What's complete vs. in progress
+- [PAC CLI Reference](docs/reference/PAC_CLI_REFERENCE.md) - Common PAC CLI commands
+- [Roadmap](docs/ROADMAP.md) - What's complete vs. in progress
 
 ## CI/CD
 

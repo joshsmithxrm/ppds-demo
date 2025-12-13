@@ -27,19 +27,6 @@ Step-by-step documentation explaining **how** to perform common tasks.
 |----------|-------------|
 | [ENVIRONMENT_SETUP_GUIDE.md](guides/ENVIRONMENT_SETUP_GUIDE.md) | Power Platform environments, PAC CLI, service principals |
 | GETTING_STARTED_GUIDE.md | New developer onboarding (planned) |
-| MAKING_CHANGES_GUIDE.md | Day-to-day development workflow (planned) |
-| DEPLOYING_CHANGES_GUIDE.md | How deployments work (planned) |
-
----
-
-## Pipeline Documentation
-
-Technical documentation for CI/CD pipelines.
-
-| Document | Description |
-|----------|-------------|
-| PIPELINE_OVERVIEW.md | Pipeline architecture and design (planned) |
-| CUSTOMIZATION_GUIDE.md | How to extend/modify pipelines (planned) |
 
 ---
 
@@ -49,21 +36,19 @@ Quick-reference material for common tasks.
 
 | Document | Description |
 |----------|-------------|
-| NAMING_CONVENTIONS_REFERENCE.md | Standards for branches, solutions, environments (planned) |
-| PAC_CLI_REFERENCE.md | Common PAC CLI commands (planned) |
-| TROUBLESHOOTING_REFERENCE.md | Common issues and solutions (planned) |
+| [PAC_CLI_REFERENCE.md](reference/PAC_CLI_REFERENCE.md) | Common PAC CLI commands and usage |
 
 ---
 
 ## Quick Links
 
 - [CLAUDE.md](../CLAUDE.md) - AI assistant coding guide (includes documentation standards)
-- [ROADMAP.md](../ROADMAP.md) - Project roadmap and status tracking
+- [ROADMAP.md](ROADMAP.md) - Project roadmap and status tracking
 - [GitHub Workflows](../.github/workflows/) - CI/CD pipeline definitions
 
 ---
 
-## 🔗 See Also
+## See Also
 
 - [Power Platform ALM Documentation](https://learn.microsoft.com/en-us/power-platform/alm/) - Official Microsoft ALM guidance
 - [PAC CLI Reference](https://learn.microsoft.com/en-us/power-platform/developer/cli/reference/) - Official PAC CLI documentation
