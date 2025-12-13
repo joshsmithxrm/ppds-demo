@@ -1,0 +1,509 @@
+<#
+.SYNOPSIS
+    Deploys plugin assemblies and registers steps to Dataverse.
+
+.DESCRIPTION
+    Deploys plugin assemblies using PAC CLI and registers/updates SDK message
+    processing steps and images using the Dataverse Web API.
+
+    Supports both classic plugin assemblies and plugin packages (NuGet).
+
+.PARAMETER Environment
+    Target environment: Dev (default), QA, Prod.
+    Uses corresponding PAC auth profile or environment variables.
+
+.PARAMETER Project
+    Specific project to deploy. If not specified, deploys all.
+
+.PARAMETER Force
+    Remove orphaned steps that exist in Dataverse but not in configuration.
+
+.PARAMETER WhatIf
+    Show what would be deployed without making changes.
+
+.PARAMETER SkipAssembly
+    Skip deploying the assembly, only register/update steps.
+
+.PARAMETER Build
+    Build projects before deployment.
+
+.EXAMPLE
+    .\Deploy-Plugins.ps1
+    Deploys all plugins to Dev environment.
+
+.EXAMPLE
+    .\Deploy-Plugins.ps1 -Environment QA -Project PPDSDemo.Plugins
+    Deploys specific plugin assembly to QA.
+
+.EXAMPLE
+    .\Deploy-Plugins.ps1 -Force
+    Deploys and removes orphaned steps.
+
+.EXAMPLE
+    .\Deploy-Plugins.ps1 -WhatIf
+    Shows what would be deployed without making changes.
+
+.NOTES
+    Requires PAC CLI to be installed and authenticated to the target environment.
+    Use 'pac auth create' to authenticate before running this script.
+#>
+
+[CmdletBinding(SupportsShouldProcess = $true)]
+param(
+    [Parameter()]
+    [ValidateSet("Dev", "QA", "Prod")]
+    [string]$Environment = "Dev",
+
+    [Parameter()]
+    [string]$Project,
+
+    [Parameter()]
+    [switch]$Force,
+
+    [Parameter()]
+    [switch]$SkipAssembly,
+
+    [Parameter()]
+    [switch]$Build
+)
+
+# =============================================================================
+# Script Initialization
+# =============================================================================
+
+$ErrorActionPreference = "Stop"
+$scriptRoot = $PSScriptRoot
+$repoRoot = Split-Path $scriptRoot -Parent
+
+# Import shared module
+$modulePath = Join-Path $scriptRoot "lib\PluginDeployment.psm1"
+if (-not (Test-Path $modulePath)) {
+    Write-Error "Module not found: $modulePath"
+    exit 1
+}
+Import-Module $modulePath -Force
+
+# Get WhatIf from common parameters
+$isWhatIf = $WhatIfPreference -or $PSCmdlet.MyInvocation.BoundParameters["WhatIf"]
+
+Write-PluginLog "Plugin Deployment Tool"
+Write-PluginLog "Repository: $repoRoot"
+Write-PluginLog "Environment: $Environment"
+if ($isWhatIf) {
+    Write-PluginWarning "Running in WhatIf mode - no changes will be made"
+}
+Write-PluginLog ""
+
+# =============================================================================
+# Environment Setup
+# =============================================================================
+
+# Verify PAC CLI is authenticated
+Write-PluginLog "Verifying PAC CLI authentication..."
+$whoOutput = pac org who 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-PluginError "Not authenticated to any environment."
+    Write-PluginLog "Run 'pac auth create' to authenticate, or use environment-specific profiles."
+    exit 1
+}
+
+# Parse environment info
+$envInfo = @{}
+foreach ($line in $whoOutput) {
+    if ($line -match "^(.+?):\s*(.+)$") {
+        $envInfo[$matches[1].Trim()] = $matches[2].Trim()
+    }
+}
+
+$connectedEnv = if ($envInfo["Environment"]) { $envInfo["Environment"] } elseif ($envInfo["Friendly Name"]) { $envInfo["Friendly Name"] } else { "Unknown" }
+$connectedUrl = if ($envInfo["Environment URL"]) { $envInfo["Environment URL"] } elseif ($envInfo["Organization URL"]) { $envInfo["Organization URL"] } else { "Unknown" }
+Write-PluginSuccess "Connected to: $connectedEnv"
+Write-PluginLog "URL: $connectedUrl"
+
+# Get API URL
+try {
+    $apiUrl = Get-DataverseApiUrl
+    Write-PluginDebug "API URL: $apiUrl"
+}
+catch {
+    Write-PluginError "Failed to get API URL: $($_.Exception.Message)"
+    exit 1
+}
+
+# =============================================================================
+# Project Discovery
+# =============================================================================
+
+Write-PluginLog ""
+Write-PluginLog "Discovering plugin projects..."
+
+Push-Location $repoRoot
+try {
+    $allProjects = Get-PluginProjects -RepositoryRoot $repoRoot
+
+    if ($allProjects.Count -eq 0) {
+        Write-PluginWarning "No plugin projects found"
+        exit 0
+    }
+
+    Write-PluginLog "Found $($allProjects.Count) plugin project(s)"
+
+    # Filter to specific project if requested
+    $projects = if ($Project) {
+        $filtered = $allProjects | Where-Object { $_.Name -eq $Project }
+        if (-not $filtered) {
+            Write-PluginError "Project not found: $Project"
+            Write-PluginLog "Available projects:"
+            $allProjects | ForEach-Object { Write-PluginLog "  - $($_.Name) ($($_.Type))" }
+            exit 1
+        }
+        @($filtered)
+    } else {
+        $allProjects
+    }
+
+    # Build if requested
+    if ($Build) {
+        Write-PluginLog ""
+        Write-PluginLog "Building projects..."
+        foreach ($proj in $projects) {
+            Write-PluginLog "Building: $($proj.Name)"
+            $buildResult = & dotnet build $proj.ProjectPath -c Release --nologo -v q 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-PluginError "Build failed for $($proj.Name)"
+                Write-PluginLog $buildResult
+                exit 1
+            }
+            Write-PluginSuccess "  Built successfully"
+
+            # Update DLL path after build
+            $dllPath = Join-Path $proj.ProjectDir "bin/Release/net462/$($proj.Name).dll"
+            if (Test-Path $dllPath) {
+                $proj.DllPath = $dllPath
+            }
+        }
+    }
+
+    # =============================================================================
+    # Deployment Loop
+    # =============================================================================
+
+    Write-PluginLog ""
+    Write-PluginLog "Starting deployment..."
+
+    $totalStepsCreated = 0
+    $totalStepsUpdated = 0
+    $totalImagesCreated = 0
+    $totalImagesUpdated = 0
+    $totalOrphansWarned = 0
+    $totalOrphansDeleted = 0
+
+    foreach ($proj in $projects) {
+        Write-PluginLog ""
+        Write-PluginLog ("=" * 60)
+        Write-PluginLog "Deploying: $($proj.Name) ($($proj.Type))"
+        Write-PluginLog ("=" * 60)
+
+        # Check for registrations.json
+        $registrationsPath = Join-Path $proj.ProjectDir "registrations.json"
+        if (-not (Test-Path $registrationsPath)) {
+            Write-PluginWarning "No registrations.json found. Run Extract-PluginRegistrations.ps1 first."
+            continue
+        }
+
+        # Load registrations
+        $registrations = Read-RegistrationJson -Path $registrationsPath
+        if (-not $registrations -or -not $registrations.assemblies) {
+            Write-PluginWarning "Invalid or empty registrations.json"
+            continue
+        }
+
+        $asmReg = $registrations.assemblies | Select-Object -First 1
+
+        # Deploy assembly
+        if (-not $SkipAssembly) {
+            $deployPath = if ($asmReg.type -eq "Nuget" -and $asmReg.packagePath) {
+                Join-Path $repoRoot $asmReg.packagePath
+            } else {
+                $proj.DllPath
+            }
+
+            if (-not $deployPath -or -not (Test-Path $deployPath)) {
+                Write-PluginWarning "Assembly/package not found: $deployPath"
+                Write-PluginWarning "Build the project first, or use -Build parameter"
+                continue
+            }
+
+            $deploySuccess = Deploy-PluginAssembly -Path $deployPath -Type $asmReg.type -WhatIf:$isWhatIf
+            if (-not $deploySuccess -and -not $isWhatIf) {
+                Write-PluginError "Failed to deploy assembly, skipping step registration"
+                continue
+            }
+        }
+
+        # Get assembly record from Dataverse
+        Write-PluginLog "Looking up assembly in Dataverse..."
+        $assembly = $null
+        if (-not $isWhatIf) {
+            try {
+                $assembly = Get-PluginAssembly -ApiUrl $apiUrl -Name $asmReg.name
+                if (-not $assembly) {
+                    Write-PluginError "Assembly not found in Dataverse after deployment: $($asmReg.name)"
+                    Write-PluginLog "This may indicate the pac plugin push failed silently."
+                    continue
+                }
+                Write-PluginLog "Assembly ID: $($assembly.pluginassemblyid)"
+            }
+            catch {
+                Write-PluginWarning "Could not query assembly: $($_.Exception.Message)"
+                Write-PluginLog "Step registration will be skipped. The assembly may need manual registration."
+                continue
+            }
+        }
+
+        # Track configured step names for orphan detection
+        $configuredStepNames = @()
+
+        # Process each plugin
+        foreach ($plugin in $asmReg.plugins) {
+            Write-PluginLog ""
+            Write-PluginLog "Plugin: $($plugin.typeName)"
+
+            # Get plugin type record
+            $pluginType = $null
+            if (-not $isWhatIf -and $assembly) {
+                try {
+                    $pluginType = Get-PluginType -ApiUrl $apiUrl -AssemblyId $assembly.pluginassemblyid -TypeName $plugin.typeName
+                    if (-not $pluginType) {
+                        Write-PluginWarning "  Plugin type not found: $($plugin.typeName)"
+                        Write-PluginLog "  This may happen if the assembly was just deployed. Try running again."
+                        continue
+                    }
+                    Write-PluginDebug "  Plugin Type ID: $($pluginType.plugintypeid)"
+                }
+                catch {
+                    Write-PluginWarning "  Could not query plugin type: $($_.Exception.Message)"
+                    continue
+                }
+            }
+
+            # Process each step
+            foreach ($step in $plugin.steps) {
+                Write-PluginLog "  Step: $($step.name)"
+                $configuredStepNames += $step.name
+
+                # Get SDK message and filter
+                $message = $null
+                $filter = $null
+
+                if (-not $isWhatIf) {
+                    try {
+                        $message = Get-SdkMessage -ApiUrl $apiUrl -MessageName $step.message
+                        if (-not $message) {
+                            Write-PluginError "    SDK Message not found: $($step.message)"
+                            continue
+                        }
+
+                        $filter = Get-SdkMessageFilter -ApiUrl $apiUrl -MessageId $message.sdkmessageid -EntityLogicalName $step.entity
+                        if (-not $filter) {
+                            Write-PluginError "    SDK Message Filter not found for: $($step.message) / $($step.entity)"
+                            continue
+                        }
+                    }
+                    catch {
+                        Write-PluginWarning "    Could not query message/filter: $($_.Exception.Message)"
+                        continue
+                    }
+                }
+
+                # Convert stage/mode to Dataverse values
+                $stageValue = $DataverseStageValues[$step.stage]
+                $modeValue = $DataverseModeValues[$step.mode]
+
+                # Check if step exists
+                $existingStep = $null
+                if (-not $isWhatIf) {
+                    try {
+                        $existingStep = Get-ProcessingStep -ApiUrl $apiUrl -StepName $step.name
+                    }
+                    catch {
+                        # Step doesn't exist, will create
+                    }
+                }
+
+                $stepData = @{
+                    Name = $step.name
+                    Stage = $stageValue
+                    Mode = $modeValue
+                    ExecutionOrder = $step.executionOrder
+                    FilteringAttributes = $step.filteringAttributes
+                    Configuration = $step.configuration
+                    PluginTypeId = $pluginType.plugintypeid
+                    MessageId = $message.sdkmessageid
+                    FilterId = $filter.sdkmessagefilterid
+                }
+
+                $stepId = $null
+                if ($existingStep) {
+                    Write-PluginLog "    Updating existing step..."
+                    if (-not $isWhatIf) {
+                        try {
+                            Update-ProcessingStep -ApiUrl $apiUrl -StepId $existingStep.sdkmessageprocessingstepid -StepData $stepData
+                            $stepId = $existingStep.sdkmessageprocessingstepid
+                            $totalStepsUpdated++
+                            Write-PluginSuccess "    Step updated"
+                        }
+                        catch {
+                            Write-PluginError "    Failed to update step: $($_.Exception.Message)"
+                            continue
+                        }
+                    } else {
+                        Write-PluginLog "    [WhatIf] Would update step"
+                        $totalStepsUpdated++
+                    }
+                } else {
+                    Write-PluginLog "    Creating new step..."
+                    if (-not $isWhatIf) {
+                        try {
+                            $newStep = New-ProcessingStep -ApiUrl $apiUrl -StepData $stepData
+                            $stepId = $newStep.sdkmessageprocessingstepid
+                            $totalStepsCreated++
+                            Write-PluginSuccess "    Step created: $stepId"
+                        }
+                        catch {
+                            Write-PluginError "    Failed to create step: $($_.Exception.Message)"
+                            continue
+                        }
+                    } else {
+                        Write-PluginLog "    [WhatIf] Would create step"
+                        $totalStepsCreated++
+                    }
+                }
+
+                # Process images
+                foreach ($image in $step.images) {
+                    Write-PluginLog "    Image: $($image.name) ($($image.imageType))"
+
+                    $imageTypeValue = $DataverseImageTypeValues[$image.imageType]
+
+                    # Check if image exists
+                    $existingImages = @()
+                    if (-not $isWhatIf -and $stepId) {
+                        try {
+                            $existingImages = Get-StepImages -ApiUrl $apiUrl -StepId $stepId
+                        }
+                        catch {
+                            # No images exist
+                        }
+                    }
+
+                    $existingImage = $existingImages | Where-Object { $_.name -eq $image.name } | Select-Object -First 1
+
+                    $imageData = @{
+                        Name = $image.name
+                        EntityAlias = if ($image.entityAlias) { $image.entityAlias } else { $image.name }
+                        ImageType = $imageTypeValue
+                        Attributes = $image.attributes
+                        StepId = $stepId
+                    }
+
+                    if ($existingImage) {
+                        Write-PluginLog "      Updating existing image..."
+                        if (-not $isWhatIf) {
+                            try {
+                                Update-StepImage -ApiUrl $apiUrl -ImageId $existingImage.sdkmessageprocessingstepimageid -ImageData $imageData
+                                $totalImagesUpdated++
+                                Write-PluginSuccess "      Image updated"
+                            }
+                            catch {
+                                Write-PluginError "      Failed to update image: $($_.Exception.Message)"
+                            }
+                        } else {
+                            Write-PluginLog "      [WhatIf] Would update image"
+                            $totalImagesUpdated++
+                        }
+                    } else {
+                        Write-PluginLog "      Creating new image..."
+                        if (-not $isWhatIf) {
+                            try {
+                                $newImage = New-StepImage -ApiUrl $apiUrl -ImageData $imageData
+                                $totalImagesCreated++
+                                Write-PluginSuccess "      Image created"
+                            }
+                            catch {
+                                Write-PluginError "      Failed to create image: $($_.Exception.Message)"
+                            }
+                        } else {
+                            Write-PluginLog "      [WhatIf] Would create image"
+                            $totalImagesCreated++
+                        }
+                    }
+                }
+            }
+        }
+
+        # Check for orphaned steps
+        if (-not $isWhatIf -and $assembly) {
+            Write-PluginLog ""
+            Write-PluginLog "Checking for orphaned steps..."
+
+            try {
+                $existingSteps = Get-ProcessingStepsForAssembly -ApiUrl $apiUrl -AssemblyId $assembly.pluginassemblyid
+
+                foreach ($existingStep in $existingSteps) {
+                    if ($configuredStepNames -notcontains $existingStep.name) {
+                        if ($Force) {
+                            Write-PluginWarning "Deleting orphaned step: $($existingStep.name)"
+                            try {
+                                Remove-ProcessingStep -ApiUrl $apiUrl -StepId $existingStep.sdkmessageprocessingstepid
+                                $totalOrphansDeleted++
+                                Write-PluginSuccess "  Deleted"
+                            }
+                            catch {
+                                Write-PluginError "  Failed to delete: $($_.Exception.Message)"
+                            }
+                        } else {
+                            Write-PluginWarning "Orphaned step found: $($existingStep.name)"
+                            Write-PluginLog "  Use -Force to delete orphaned steps"
+                            $totalOrphansWarned++
+                        }
+                    }
+                }
+            }
+            catch {
+                Write-PluginWarning "Could not check for orphaned steps: $($_.Exception.Message)"
+            }
+        }
+    }
+
+    # =============================================================================
+    # Summary
+    # =============================================================================
+
+    Write-PluginLog ""
+    Write-PluginLog ("=" * 60)
+    Write-PluginLog "Deployment Summary"
+    Write-PluginLog ("=" * 60)
+    Write-PluginLog "Environment: $Environment ($connectedUrl)"
+    Write-PluginLog "Projects deployed: $($projects.Count)"
+    Write-PluginLog ""
+    Write-PluginSuccess "Steps created: $totalStepsCreated"
+    Write-PluginSuccess "Steps updated: $totalStepsUpdated"
+    Write-PluginSuccess "Images created: $totalImagesCreated"
+    Write-PluginSuccess "Images updated: $totalImagesUpdated"
+
+    if ($totalOrphansWarned -gt 0) {
+        Write-PluginWarning "Orphaned steps (not deleted): $totalOrphansWarned"
+    }
+    if ($totalOrphansDeleted -gt 0) {
+        Write-PluginWarning "Orphaned steps deleted: $totalOrphansDeleted"
+    }
+
+    if ($isWhatIf) {
+        Write-PluginLog ""
+        Write-PluginWarning "WhatIf mode: No actual changes were made"
+    }
+}
+finally {
+    Pop-Location
+}
