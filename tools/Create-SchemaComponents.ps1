@@ -10,57 +10,36 @@
 
     All components are added to the PPDSDemo solution.
 
-.PARAMETER DynamicsConnectionString
-    Connection string for Dataverse. Format:
-    - Interactive: AuthType=OAuth;Url=https://yourorg.crm.dynamics.com;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;RedirectUri=http://localhost;LoginPrompt=Auto
-    - Service Principal: AuthType=ClientSecret;Url=https://yourorg.crm.dynamics.com;ClientId=xxx;ClientSecret=xxx
-
-.PARAMETER TenantId
-    Azure AD Tenant ID (for service principal auth)
-
-.PARAMETER ClientId
-    App Registration Client ID (for service principal auth)
-
-.PARAMETER ClientSecret
-    App Registration Client Secret (for service principal auth)
-
-.PARAMETER EnvironmentUrl
-    Dataverse environment URL (e.g., https://orgcabef92d.crm.dynamics.com)
-
-.PARAMETER SolutionName
-    Unique name of the solution to add components to (default: PPDSDemo)
+.PREREQUISITES
+    - Install PowerShell module: Install-Module Microsoft.Xrm.Data.PowerShell -Scope CurrentUser
 
 .EXAMPLE
-    # Interactive auth (will prompt for login)
-    .\tools\Create-SchemaComponents.ps1 -EnvironmentUrl "https://orgcabef92d.crm.dynamics.com"
+    # Using environment file (recommended)
+    .\tools\Create-SchemaComponents.ps1 -EnvFile ".env.dev"
+
+.EXAMPLE
+    # Interactive auth for quick testing
+    .\tools\Create-SchemaComponents.ps1 -EnvironmentUrl "https://org.crm.dynamics.com" -Interactive
 
 .EXAMPLE
     # Service principal auth
-    .\tools\Create-SchemaComponents.ps1 -TenantId "xxx" -ClientId "xxx" -ClientSecret "xxx" -EnvironmentUrl "https://orgcabef92d.crm.dynamics.com"
+    .\tools\Create-SchemaComponents.ps1 -TenantId "xxx" -ClientId "xxx" -ClientSecret "xxx" -EnvironmentUrl "https://org.crm.dynamics.com"
 
 .EXAMPLE
     # Direct connection string
-    .\tools\Create-SchemaComponents.ps1 -DynamicsConnectionString "AuthType=ClientSecret;Url=https://org.crm.dynamics.com;ClientId=xxx;ClientSecret=xxx"
+    .\tools\Create-SchemaComponents.ps1 -ConnectionString "AuthType=ClientSecret;Url=https://org.crm.dynamics.com;ClientId=xxx;ClientSecret=xxx"
 #>
 
 param(
-    [Parameter(Mandatory = $false)]
-    [string]$DynamicsConnectionString,
-
-    [Parameter(Mandatory = $false)]
+    [string]$ConnectionString,
     [string]$TenantId,
-
-    [Parameter(Mandatory = $false)]
     [string]$ClientId,
-
-    [Parameter(Mandatory = $false)]
     [string]$ClientSecret,
-
-    [Parameter(Mandatory = $false)]
     [string]$EnvironmentUrl,
+    [string]$EnvFile,
+    [switch]$Interactive,
 
     [string]$SolutionName = "PPDSDemo",
-
     [switch]$SkipOptionSet,
     [switch]$SkipTable,
     [switch]$SkipEnvironmentVariables
@@ -68,6 +47,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ScriptRoot = $PSScriptRoot
+
+# Import shared authentication module
+. "$ScriptRoot\Common-Auth.ps1"
 
 # =============================================================================
 # Configuration
@@ -77,90 +59,6 @@ $Config = @{
     PublisherPrefix = "ppds"
     OptionValuePrefix = 37411
     LanguageCode = 1033
-}
-
-# =============================================================================
-# Logging Functions (following Empire patterns)
-# =============================================================================
-
-function Write-Log {
-    param([string]$Message, [string]$Level = "INFO")
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $color = switch ($Level) {
-        "INFO" { "White" }
-        "SUCCESS" { "Green" }
-        "WARNING" { "Yellow" }
-        "ERROR" { "Red" }
-        "DEBUG" { "Gray" }
-        default { "White" }
-    }
-    Write-Host "[$timestamp] [$Level] $Message" -ForegroundColor $color
-}
-
-function Write-Success { param([string]$Message) Write-Log $Message "SUCCESS" }
-function Write-Warning-Log { param([string]$Message) Write-Log $Message "WARNING" }
-function Write-Error-Log { param([string]$Message) Write-Log $Message "ERROR" }
-function Write-Debug-Log { param([string]$Message) Write-Log $Message "DEBUG" }
-
-# =============================================================================
-# Connection Setup (following Empire/Deploy-Components patterns)
-# =============================================================================
-
-function Get-DataverseConnection {
-    param(
-        [string]$ConnectionString,
-        [string]$TenantId,
-        [string]$ClientId,
-        [string]$ClientSecret,
-        [string]$EnvironmentUrl
-    )
-
-    # Check if module is installed
-    if (-not (Get-Module -ListAvailable -Name Microsoft.Xrm.Data.PowerShell)) {
-        Write-Error-Log "Microsoft.Xrm.Data.PowerShell module not found."
-        Write-Log "Install it with: Install-Module Microsoft.Xrm.Data.PowerShell -Scope CurrentUser"
-        exit 1
-    }
-
-    Import-Module Microsoft.Xrm.Data.PowerShell -ErrorAction Stop
-
-    # Build connection string if not provided directly
-    if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
-        $useServicePrincipal = -not [string]::IsNullOrWhiteSpace($TenantId) -and
-                               -not [string]::IsNullOrWhiteSpace($ClientId) -and
-                               -not [string]::IsNullOrWhiteSpace($ClientSecret)
-
-        if ($useServicePrincipal) {
-            Write-Log "Using Service Principal authentication..."
-            $ConnectionString = "AuthType=ClientSecret;Url=$EnvironmentUrl;ClientId=$ClientId;ClientSecret=$ClientSecret"
-        }
-        else {
-            Write-Log "Using Interactive OAuth authentication..."
-            # Use the well-known Power Platform AppId for interactive auth
-            $ConnectionString = "AuthType=OAuth;Url=$EnvironmentUrl;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;RedirectUri=http://localhost;LoginPrompt=Auto"
-        }
-    }
-
-    # Redact connection string for logging
-    $sanitizedConnString = $ConnectionString -replace "(ClientSecret=)[^;]+", '$1***REDACTED***'
-    Write-Log "Connection string: $sanitizedConnString"
-
-    try {
-        Write-Log "Connecting to Dataverse..."
-        $conn = Get-CrmConnection -ConnectionString $ConnectionString
-
-        if (-not $conn -or -not $conn.IsReady) {
-            Write-Error-Log "Failed to connect to Dataverse"
-            exit 1
-        }
-
-        Write-Success "Connected to: $($conn.ConnectedOrgFriendlyName)"
-        return $conn
-    }
-    catch {
-        Write-Error-Log "Connection failed: $($_.Exception.Message)"
-        throw
-    }
 }
 
 # =============================================================================
@@ -681,17 +579,18 @@ Write-Host " Power Platform Schema Component Creator" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Get connection using same pattern as Deploy-Components.ps1
+# Get connection using Common-Auth
 $conn = Get-DataverseConnection `
-    -ConnectionString $DynamicsConnectionString `
+    -ConnectionString $ConnectionString `
     -TenantId $TenantId `
     -ClientId $ClientId `
     -ClientSecret $ClientSecret `
-    -EnvironmentUrl $EnvironmentUrl
+    -EnvironmentUrl $EnvironmentUrl `
+    -EnvFile $EnvFile `
+    -Interactive:$Interactive
 
-# Set API base URL from connection (trim trailing slash to avoid double slashes)
-$webAppUrl = $conn.ConnectedOrgPublishedEndpoints['WebApplication'].TrimEnd('/')
-$script:ApiBaseUrl = "$webAppUrl/api/data/v9.2"
+# Set API base URL from connection
+$script:ApiBaseUrl = Get-WebApiBaseUrl -Connection $conn
 Write-Log "API Base URL: $script:ApiBaseUrl"
 Write-Log "Solution: $SolutionName"
 
