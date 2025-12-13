@@ -1,6 +1,6 @@
 {
-  "$schema": "https://raw.githubusercontent.com/microsoft/coe-alm-accelerator-templates/main/deployment-settings.schema.json",
   "_comment": "QA Environment Deployment Settings for PPDSDemo Solution",
+  "_see": "https://learn.microsoft.com/en-us/power-platform/alm/conn-ref-env-variables-build-tools",
   "_instructions": [
     "This file configures environment-specific values for the QA deployment.",
     "Update ConnectionReferences with actual connection IDs from your QA environment.",
