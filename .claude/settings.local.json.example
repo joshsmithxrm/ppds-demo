@@ -115,9 +115,5 @@
       "Bash(gh release create:*)",
       "Bash(gh repo create:*)"
     ]
-  },
-  "enabledMcpjsonServers": [
-    "dataverse"
-  ],
-  "enableAllProjectMcpServers": true
+  }
 }
