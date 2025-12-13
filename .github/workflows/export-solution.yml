@@ -5,6 +5,9 @@
 # 1. Export solution from Dev environment (CI)
 # 2. Deploy managed solution to QA environment (CD)
 #
+# Uses PAC CLI directly for better reliability and portability (works on both
+# GitHub Actions and Azure DevOps with minimal changes).
+#
 # =============================================================================
 # GITHUB ENVIRONMENTS REQUIRED
 # =============================================================================
@@ -82,7 +85,7 @@ jobs:
         github.event.inputs.action == 'export-only' ||
         github.event.inputs.action == 'export-and-deploy'
       )
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     environment: Dev
 
     permissions:
@@ -94,57 +97,61 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Install Power Platform Tools
-        uses: microsoft/powerplatform-actions/actions-install@v1.9.1
-
-      - name: Who Am I (Dev)
-        uses: microsoft/powerplatform-actions/who-am-i@v1.9.1
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
-          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
-          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
-          app-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
+          dotnet-version: '8.x'
+
+      - name: Install Power Platform CLI
+        run: |
+          dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Authenticate to Dev environment
+        run: |
+          pac auth create \
+            --environment "${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}" \
+            --tenant "${{ vars.POWERPLATFORM_TENANT_ID }}" \
+            --applicationId "${{ vars.POWERPLATFORM_CLIENT_ID }}" \
+            --clientSecret "${{ secrets.POWERPLATFORM_CLIENT_SECRET }}"
+
+      - name: Verify connection (Who Am I)
+        run: pac org who
 
       - name: Export Solution (Unmanaged)
-        uses: microsoft/powerplatform-actions/export-solution@v1.9.1
-        with:
-          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
-          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
-          app-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
-          solution-name: ${{ env.SOLUTION_NAME }}
-          solution-output-file: ${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}.zip
-          managed: false
+        run: |
+          mkdir -p "${{ env.SOLUTION_EXPORT_FOLDER }}"
+          pac solution export \
+            --name "${{ env.SOLUTION_NAME }}" \
+            --path "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}.zip" \
+            --managed false \
+            --async
 
       - name: Unpack Solution
-        uses: microsoft/powerplatform-actions/unpack-solution@v1.9.1
-        with:
-          solution-file: ${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}.zip
-          solution-folder: ${{ env.SOLUTION_FOLDER }}
-          solution-type: 'Unmanaged'
-          overwrite-files: true
+        run: |
+          pac solution unpack \
+            --zipfile "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}.zip" \
+            --folder "${{ env.SOLUTION_FOLDER }}" \
+            --processCanvasApps \
+            --allowDelete
 
       - name: Clean up export zip
-        run: |
-          Remove-Item -Path "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}.zip" -Force -ErrorAction SilentlyContinue
-        shell: pwsh
+        run: rm -f "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}.zip"
 
       - name: Check for changes
         id: changes
         run: |
           git add -A
-          $changes = git diff --cached --name-only
-          if ($changes) {
-            echo "has_changes=true" >> $env:GITHUB_OUTPUT
-            echo "Changes detected:"
-            echo $changes
-          } else {
-            echo "has_changes=false" >> $env:GITHUB_OUTPUT
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "No changes detected"
-          }
-        shell: pwsh
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected:"
+            git diff --cached --name-only
+          fi
 
       - name: Commit changes to main
         if: steps.changes.outputs.has_changes == 'true' && (github.event.inputs.create_pr != 'true' || github.event_name == 'schedule')
@@ -157,7 +164,6 @@ jobs:
           Solution: ${{ env.SOLUTION_NAME }}
           Triggered by: ${{ github.event_name }}"
           git push
-        shell: pwsh
 
       - name: Create Pull Request
         if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.create_pr == 'true'
@@ -198,62 +204,66 @@ jobs:
         (github.event_name == 'workflow_dispatch' &&
          (github.event.inputs.action == 'deploy-only' || github.event.inputs.action == 'export-and-deploy'))
       )
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     environment: QA
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Ensure we have the latest changes (in case export job pushed)
           ref: main
 
       - name: Pull latest changes
         run: git pull origin main
-        shell: pwsh
 
-      - name: Install Power Platform Tools
-        uses: microsoft/powerplatform-actions/actions-install@v1.9.1
-
-      - name: Who Am I (QA)
-        uses: microsoft/powerplatform-actions/who-am-i@v1.9.1
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
-          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
-          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
-          app-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
+          dotnet-version: '8.x'
+
+      - name: Install Power Platform CLI
+        run: |
+          dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Authenticate to QA environment
+        run: |
+          pac auth create \
+            --environment "${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}" \
+            --tenant "${{ vars.POWERPLATFORM_TENANT_ID }}" \
+            --applicationId "${{ vars.POWERPLATFORM_CLIENT_ID }}" \
+            --clientSecret "${{ secrets.POWERPLATFORM_CLIENT_SECRET }}"
+
+      - name: Verify connection (Who Am I)
+        run: pac org who
 
       - name: Pack Solution (Managed)
-        uses: microsoft/powerplatform-actions/pack-solution@v1.9.1
-        with:
-          solution-folder: ${{ env.SOLUTION_FOLDER }}
-          solution-file: ${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}_managed.zip
-          solution-type: Managed
+        run: |
+          mkdir -p "${{ env.SOLUTION_EXPORT_FOLDER }}"
+          pac solution pack \
+            --zipfile "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}_managed.zip" \
+            --folder "${{ env.SOLUTION_FOLDER }}" \
+            --managed
 
       - name: Import Solution to QA (Managed)
-        uses: microsoft/powerplatform-actions/import-solution@v1.9.1
-        with:
-          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
-          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
-          app-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
-          solution-file: ${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}_managed.zip
-          force-overwrite: true
-          publish-changes: true
+        run: |
+          pac solution import \
+            --path "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}_managed.zip" \
+            --force-overwrite \
+            --publish-changes \
+            --async
 
       - name: Clean up
-        run: |
-          Remove-Item -Path "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}_managed.zip" -Force -ErrorAction SilentlyContinue
-        shell: pwsh
+        run: rm -f "${{ env.SOLUTION_EXPORT_FOLDER }}/${{ env.SOLUTION_NAME }}_managed.zip"
 
       - name: Deployment Summary
         run: |
-          echo "## Deployment Complete" >> $env:GITHUB_STEP_SUMMARY
-          echo "" >> $env:GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $env:GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $env:GITHUB_STEP_SUMMARY
-          echo "| Solution | ${{ env.SOLUTION_NAME }} |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| Target | QA (${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}) |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| Type | Managed |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| Triggered by | ${{ github.event_name }} |" >> $env:GITHUB_STEP_SUMMARY
-        shell: pwsh
+          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Solution | ${{ env.SOLUTION_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | QA (${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Type | Managed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
