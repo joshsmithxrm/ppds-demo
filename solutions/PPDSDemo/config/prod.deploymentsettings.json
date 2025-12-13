@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/powerplatform-build-tools/main/src/schema/deployment-settings.json",
+  "_comment": "Production Environment Deployment Settings for PPDSDemo Solution",
+  "_instructions": [
+    "This file configures environment-specific values for the Production deployment.",
+    "Update ConnectionReferences with actual connection IDs from your Production environment.",
+    "Update EnvironmentVariables with Production-specific values.",
+    "Remove or comment out any entries that don't apply to your solution.",
+    "IMPORTANT: Never commit secrets or sensitive values to this file."
+  ],
+  "EnvironmentVariables": [
+    {
+      "SchemaName": "ppds_SampleEnvironmentVariable",
+      "Value": "Production-specific-value-here"
+    }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "ppds_sharedcommondataserviceforapps",
+      "ConnectionId": "00000000-0000-0000-0000-000000000000",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+    }
+  ]
+}

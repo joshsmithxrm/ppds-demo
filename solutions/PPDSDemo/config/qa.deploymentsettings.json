@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/powerplatform-build-tools/main/src/schema/deployment-settings.json",
+  "_comment": "QA Environment Deployment Settings for PPDSDemo Solution",
+  "_instructions": [
+    "This file configures environment-specific values for the QA deployment.",
+    "Update ConnectionReferences with actual connection IDs from your QA environment.",
+    "Update EnvironmentVariables with QA-specific values.",
+    "Remove or comment out any entries that don't apply to your solution."
+  ],
+  "EnvironmentVariables": [
+    {
+      "SchemaName": "ppds_SampleEnvironmentVariable",
+      "Value": "QA-specific-value-here"
+    }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "ppds_sharedcommondataserviceforapps",
+      "ConnectionId": "00000000-0000-0000-0000-000000000000",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+    }
+  ]
+}

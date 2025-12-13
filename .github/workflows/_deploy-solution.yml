@@ -4,6 +4,18 @@
 # Reusable workflow for deploying a managed Power Platform solution to any
 # environment. Called by cd-qa.yml and cd-prod.yml.
 #
+# Features:
+#   - Automatic deployment settings detection per environment
+#   - Version comparison (skip if target has same/newer version)
+#   - Smart retry logic for transient failures
+#   - Detailed deployment summary
+#
+# Deployment Settings:
+#   Place environment-specific settings at:
+#   solutions/{solution-name}/config/{environment}.deploymentsettings.json
+#
+#   Example: solutions/PPDSDemo/config/qa.deploymentsettings.json
+#
 # Usage:
 #   jobs:
 #     deploy:
@@ -39,10 +51,31 @@ on:
         required: false
         type: string
         default: ''
+      skip-if-same-version:
+        description: 'Skip import if target has same or newer version'
+        required: false
+        type: boolean
+        default: true
+      max-retries:
+        description: 'Maximum retry attempts for transient import failures'
+        required: false
+        type: number
+        default: 3
+      settings-file:
+        description: 'Override path to deployment settings file (auto-detected if empty)'
+        required: false
+        type: string
+        default: ''
     outputs:
       deployed:
         description: 'Whether deployment completed successfully'
         value: ${{ jobs.deploy.outputs.deployed }}
+      skipped:
+        description: 'Whether deployment was skipped (version match)'
+        value: ${{ jobs.deploy.outputs.skipped }}
+      version:
+        description: 'Version that was deployed'
+        value: ${{ jobs.deploy.outputs.version }}
 
 jobs:
   deploy:
@@ -50,13 +83,42 @@ jobs:
     environment: ${{ inputs.environment-name }}
 
     outputs:
-      deployed: ${{ steps.complete.outputs.deployed }}
+      deployed: ${{ steps.import.outputs.imported }}
+      skipped: ${{ steps.import.outputs.skipped }}
+      version: ${{ steps.import.outputs.import-version }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
+
+      - name: Detect deployment settings
+        id: settings
+        run: |
+          # Convert environment name to lowercase for file lookup
+          ENV_LOWER=$(echo "${{ inputs.environment-name }}" | tr '[:upper:]' '[:lower:]')
+
+          # Check for override or auto-detect
+          if [ -n "${{ inputs.settings-file }}" ]; then
+            SETTINGS_PATH="${{ inputs.settings-file }}"
+            echo "Using override settings file: $SETTINGS_PATH"
+          else
+            # Auto-detect based on solution name and environment
+            SOLUTION_BASE="solutions/${{ inputs.solution-name }}"
+            SETTINGS_PATH="${SOLUTION_BASE}/config/${ENV_LOWER}.deploymentsettings.json"
+            echo "Auto-detecting settings at: $SETTINGS_PATH"
+          fi
+
+          if [ -f "$SETTINGS_PATH" ]; then
+            echo "settings-file=$SETTINGS_PATH" >> $GITHUB_OUTPUT
+            echo "has-settings=true" >> $GITHUB_OUTPUT
+            echo "Found deployment settings file"
+          else
+            echo "settings-file=" >> $GITHUB_OUTPUT
+            echo "has-settings=false" >> $GITHUB_OUTPUT
+            echo "No deployment settings file found (optional)"
+          fi
 
       - name: Setup PAC CLI
         uses: ./.github/actions/setup-pac-cli
@@ -78,23 +140,52 @@ jobs:
           package-type: Managed
 
       - name: Import solution
+        id: import
         uses: ./.github/actions/import-solution
         with:
           solution-path: ${{ steps.pack.outputs.solution-path }}
-
-      - name: Mark deployment complete
-        id: complete
-        run: echo "deployed=true" >> $GITHUB_OUTPUT
+          solution-name: ${{ inputs.solution-name }}
+          skip-if-same-version: ${{ inputs.skip-if-same-version }}
+          max-retries: ${{ inputs.max-retries }}
+          settings-file: ${{ steps.settings.outputs.settings-file }}
 
       - name: Deployment summary
         run: |
-          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Solution | ${{ inputs.solution-name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Target | ${{ inputs.environment-name }} (\`${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}\`) |" >> $GITHUB_STEP_SUMMARY
           echo "| Type | Managed |" >> $GITHUB_STEP_SUMMARY
+
+          # Show version info
+          if [ -n "${{ steps.import.outputs.import-version }}" ]; then
+            echo "| Import Version | ${{ steps.import.outputs.import-version }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -n "${{ steps.import.outputs.target-version }}" ]; then
+            echo "| Target Version | ${{ steps.import.outputs.target-version }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Show status
+          if [ "${{ steps.import.outputs.skipped }}" = "true" ]; then
+            echo "| Status | **Skipped** (version match) |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.import.outputs.imported }}" = "true" ]; then
+            echo "| Status | **Deployed** |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Status | **Failed** |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Show retry count if any
+          if [ -n "${{ steps.import.outputs.retry-count }}" ] && [ "${{ steps.import.outputs.retry-count }}" != "0" ]; then
+            echo "| Retry Attempts | ${{ steps.import.outputs.retry-count }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Show settings file if used
+          if [ "${{ steps.settings.outputs.has-settings }}" = "true" ]; then
+            echo "| Settings File | \`${{ steps.settings.outputs.settings-file }}\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "| Branch/Ref | ${{ inputs.ref || github.ref }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY

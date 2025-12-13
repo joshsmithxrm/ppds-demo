@@ -4,6 +4,12 @@
 # Exports the solution from the Dev environment and commits changes to the
 # develop branch. This enables source control of customizations made in Dev.
 #
+# Features:
+#   - Intelligent noise filtering (filters volatile content changes)
+#   - Automatic version stamping (X.X.YYYYMMDD.BuildNumber format)
+#   - Git tagging for release tracking
+#   - Enhanced change analysis and reporting
+#
 # Triggers:
 #   - Nightly at 2 AM UTC (automated sync)
 #   - Manual workflow dispatch
@@ -12,7 +18,10 @@
 #   1. Connect to Dev environment
 #   2. Export managed and unmanaged solutions
 #   3. Unpack to source control format
-#   4. Commit changes to develop branch (or create PR)
+#   4. Analyze changes (filter noise from real changes)
+#   5. Update solution version if real changes detected
+#   6. Commit changes to develop branch (or create PR)
+#   7. Create git tag for version tracking
 #
 # The commit to develop will trigger cd-qa.yml for automatic QA deployment.
 #
@@ -52,11 +61,28 @@ on:
         options:
           - 'true'
           - 'false'
+      skip_noise_filter:
+        description: 'Skip noise filtering (commit all changes)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      debug:
+        description: 'Enable debug logging'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 env:
   SOLUTION_NAME: ${{ github.event.inputs.solution_name || 'PPDSDemo' }}
   SOLUTION_BASE_FOLDER: solutions/PPDSDemo/src
   SOLUTION_EXPORT_FOLDER: solutions/exports
+  VERSION_FILE: solutions/PPDSDemo/version.txt
 
 jobs:
   export-from-dev:
@@ -68,13 +94,16 @@ jobs:
       pull-requests: write
 
     outputs:
-      has_changes: ${{ steps.changes.outputs.has_changes }}
+      has_changes: ${{ steps.analyze.outputs.has_real_changes }}
+      version: ${{ steps.version.outputs.new_version }}
+      noise_filtered: ${{ steps.analyze.outputs.noise_count }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: develop
+          fetch-depth: 0  # Full history for tagging
 
       - name: Setup PAC CLI
         uses: ./.github/actions/setup-pac-cli
@@ -94,50 +123,163 @@ jobs:
           output-folder: ${{ env.SOLUTION_BASE_FOLDER }}
           temp-folder: ${{ env.SOLUTION_EXPORT_FOLDER }}
 
-      - name: Check for changes
-        id: changes
+      - name: Stage changes
+        run: git add -A
+
+      - name: Analyze changes for noise
+        id: analyze
+        if: github.event.inputs.skip_noise_filter != 'true'
+        uses: ./.github/actions/analyze-changes
+        with:
+          solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
+          debug: ${{ github.event.inputs.debug || 'false' }}
+
+      - name: Check for changes (skip filter mode)
+        id: analyze_raw
+        if: github.event.inputs.skip_noise_filter == 'true'
         run: |
-          git add -A
           if git diff --cached --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "No changes detected in solution"
+            echo "has_real_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
           else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "Changes detected:"
-            git diff --cached --name-only
+            echo "has_real_changes=true" >> $GITHUB_OUTPUT
+            CHANGE_COUNT=$(git diff --cached --name-only | wc -l)
+            echo "real_count=$CHANGE_COUNT" >> $GITHUB_OUTPUT
+            echo "noise_count=0" >> $GITHUB_OUTPUT
+            echo "change_summary=$CHANGE_COUNT changes detected (noise filter disabled)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine if changes exist
+        id: has_changes
+        run: |
+          if [ "${{ github.event.inputs.skip_noise_filter }}" = "true" ]; then
+            echo "result=${{ steps.analyze_raw.outputs.has_real_changes }}" >> $GITHUB_OUTPUT
+          else
+            echo "result=${{ steps.analyze.outputs.has_real_changes }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Reset staging if no real changes
+        if: steps.has_changes.outputs.result != 'true'
+        run: |
+          echo "No real changes detected, resetting staged changes"
+          git reset HEAD
+
+      - name: Generate version
+        id: version
+        if: steps.has_changes.outputs.result == 'true'
+        run: |
+          # Read current version or initialize
+          if [ -f "${{ env.VERSION_FILE }}" ]; then
+            CURRENT_VERSION=$(cat "${{ env.VERSION_FILE }}")
+            echo "Current version: $CURRENT_VERSION"
+            # Extract major.minor
+            MAJOR_MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f1-2)
+          else
+            echo "No version file found, initializing at 1.0"
+            MAJOR_MINOR="1.0"
+          fi
+
+          # Generate new version: major.minor.YYYYMMDD.runNumber
+          DATE=$(date -u +%Y%m%d)
+          NEW_VERSION="${MAJOR_MINOR}.${DATE}.${{ github.run_number }}"
+
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "major_minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
+
+      - name: Update version file
+        if: steps.has_changes.outputs.result == 'true'
+        run: |
+          # Update version.txt
+          mkdir -p "$(dirname "${{ env.VERSION_FILE }}")"
+          echo "${{ steps.version.outputs.new_version }}" > "${{ env.VERSION_FILE }}"
+          git add "${{ env.VERSION_FILE }}"
+
+      - name: Stamp version into Solution.xml
+        if: steps.has_changes.outputs.result == 'true'
+        run: |
+          # Update version in both Managed and Unmanaged Solution.xml files
+          VERSION="${{ steps.version.outputs.new_version }}"
+
+          for SOLUTION_XML in "${{ env.SOLUTION_BASE_FOLDER }}/Managed/Other/Solution.xml" "${{ env.SOLUTION_BASE_FOLDER }}/Unmanaged/Other/Solution.xml"; do
+            if [ -f "$SOLUTION_XML" ]; then
+              echo "Updating version in: $SOLUTION_XML"
+              # Use sed to replace the Version tag content
+              sed -i "s|<Version>[^<]*</Version>|<Version>$VERSION</Version>|g" "$SOLUTION_XML"
+              git add "$SOLUTION_XML"
+            fi
+          done
+
+          # Also update root Solution.xml if it exists
+          ROOT_SOLUTION_XML="${{ env.SOLUTION_BASE_FOLDER }}/Other/Solution.xml"
+          if [ -f "$ROOT_SOLUTION_XML" ]; then
+            echo "Updating version in: $ROOT_SOLUTION_XML"
+            sed -i "s|<Version>[^<]*</Version>|<Version>$VERSION</Version>|g" "$ROOT_SOLUTION_XML"
+            git add "$ROOT_SOLUTION_XML"
           fi
 
       - name: Commit changes to develop
-        if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.create_pr != 'true'
+        if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: sync solution from Dev environment
+
+          # Build commit message
+          VERSION="${{ steps.version.outputs.new_version }}"
+          REAL_COUNT="${{ steps.analyze.outputs.real_count || steps.analyze_raw.outputs.real_count || '0' }}"
+          NOISE_COUNT="${{ steps.analyze.outputs.noise_count || '0' }}"
+
+          git commit -m "chore: sync solution from Dev (v${VERSION})
 
           Automated export from ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
           Solution: ${{ env.SOLUTION_NAME }}
+          Version: ${VERSION}
+          Changes: ${REAL_COUNT} real, ${NOISE_COUNT} noise filtered
           Triggered by: ${{ github.event_name }}"
+
           git push origin develop
 
+      - name: Create git tag
+        if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.new_version }}"
+          TAG_NAME="v${VERSION}"
+
+          echo "Creating tag: $TAG_NAME"
+          git tag -a "$TAG_NAME" -m "Release $TAG_NAME
+
+          Solution: ${{ env.SOLUTION_NAME }}
+          Exported from: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
+          Run: ${{ github.run_id }}"
+
+          git push origin "$TAG_NAME"
+
       - name: Create Pull Request
-        if: steps.changes.outputs.has_changes == 'true' && github.event.inputs.create_pr == 'true'
+        if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr == 'true'
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'chore: sync solution from Dev environment'
+          commit-message: 'chore: sync solution from Dev (v${{ steps.version.outputs.new_version }})'
           branch: solution-export/${{ github.run_id }}
           base: develop
           delete-branch: true
-          title: 'chore: sync ${{ env.SOLUTION_NAME }} solution from Dev'
+          title: 'chore: sync ${{ env.SOLUTION_NAME }} v${{ steps.version.outputs.new_version }} from Dev'
           body: |
             ## Automated Solution Export
 
             This PR contains changes exported from the Dev environment.
 
-            - **Environment:** ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
-            - **Solution:** ${{ env.SOLUTION_NAME }}
-            - **Triggered by:** Manual workflow dispatch
-            - **Run ID:** ${{ github.run_id }}
+            | Property | Value |
+            |----------|-------|
+            | **Environment** | ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }} |
+            | **Solution** | ${{ env.SOLUTION_NAME }} |
+            | **Version** | ${{ steps.version.outputs.new_version }} |
+            | **Real Changes** | ${{ steps.analyze.outputs.real_count || steps.analyze_raw.outputs.real_count }} |
+            | **Noise Filtered** | ${{ steps.analyze.outputs.noise_count || '0' }} |
+            | **Run ID** | ${{ github.run_id }} |
+
+            ### Change Summary
+            ${{ steps.analyze.outputs.change_summary || steps.analyze_raw.outputs.change_summary }}
 
             Please review the changes before merging.
           labels: |
@@ -146,11 +288,29 @@ jobs:
 
       - name: Export summary
         run: |
-          echo "## Export Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## Export Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Solution | ${{ env.SOLUTION_NAME }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Source | Dev (\`${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}\`) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Changes | ${{ steps.changes.outputs.has_changes }} |" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.has_changes.outputs.result }}" = "true" ]; then
+            echo "| Version | ${{ steps.version.outputs.new_version }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Real Changes | ${{ steps.analyze.outputs.real_count || steps.analyze_raw.outputs.real_count }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Noise Filtered | ${{ steps.analyze.outputs.noise_count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Status | **Committed** |" >> $GITHUB_STEP_SUMMARY
+
+            if [ "${{ github.event.inputs.create_pr }}" != "true" ]; then
+              echo "| Git Tag | \`v${{ steps.version.outputs.new_version }}\` |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| Status | **No real changes** (noise filtered) |" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event.inputs.skip_noise_filter }}" = "true" ]; then
+            echo "> **Note:** Noise filtering was disabled for this run." >> $GITHUB_STEP_SUMMARY
+          fi

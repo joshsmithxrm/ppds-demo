@@ -1,8 +1,8 @@
 # =============================================================================
 # PR: Validate Solution
 # =============================================================================
-# Validates that the Power Platform solution can be packed successfully.
-# Provides early feedback on PRs without requiring a live environment.
+# Validates that the Power Platform solution can be packed successfully and
+# optionally runs the Solution Checker for quality analysis.
 #
 # Triggers:
 #   - Pull requests to develop or main that modify solution files
@@ -11,8 +11,9 @@
 # Validation checks:
 #   - Managed solution can be packed from source
 #   - Unmanaged solution can be packed from source
+#   - (Optional) Solution Checker quality analysis
 #
-# This catches structural issues before they reach QA/Production.
+# This catches structural and quality issues before they reach QA/Production.
 #
 # =============================================================================
 
@@ -34,16 +35,40 @@ on:
         description: 'Solution unique name'
         required: true
         default: 'PPDSDemo'
+      run_solution_checker:
+        description: 'Run Solution Checker analysis'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      checker_fail_level:
+        description: 'Solution Checker failure threshold'
+        required: false
+        default: 'High'
+        type: choice
+        options:
+          - 'Critical'
+          - 'High'
+          - 'Medium'
+          - 'Low'
 
 env:
   SOLUTION_NAME: ${{ github.event.inputs.solution_name || 'PPDSDemo' }}
   SOLUTION_BASE_FOLDER: solutions/PPDSDemo/src
   SOLUTION_EXPORT_FOLDER: solutions/exports
+  RUN_CHECKER: ${{ github.event.inputs.run_solution_checker || 'true' }}
+  CHECKER_LEVEL: ${{ github.event.inputs.checker_fail_level || 'High' }}
 
 jobs:
   validate-solution:
     name: Validate Solution Structure
     runs-on: ubuntu-latest
+
+    outputs:
+      managed-path: ${{ steps.pack-managed.outputs.solution-path }}
+      checker-passed: ${{ steps.check.outputs.passed }}
 
     steps:
       - name: Checkout repository
@@ -71,6 +96,7 @@ jobs:
           package-type: Unmanaged
 
       - name: Verify packed solutions
+        id: verify
         run: |
           echo "Checking packed solutions..."
           ls -la ${{ env.SOLUTION_EXPORT_FOLDER }}/
@@ -96,16 +122,69 @@ jobs:
           echo ""
           echo "Both managed and unmanaged solutions packed successfully!"
 
+          # Output for summary
+          echo "managed_size=$MANAGED_SIZE" >> $GITHUB_OUTPUT
+          echo "unmanaged_size=$UNMANAGED_SIZE" >> $GITHUB_OUTPUT
+
+      - name: Run Solution Checker
+        id: check
+        if: env.RUN_CHECKER == 'true'
+        uses: ./.github/actions/check-solution
+        with:
+          solution-path: ${{ steps.pack-managed.outputs.solution-path }}
+          fail-on-level: ${{ env.CHECKER_LEVEL }}
+          geography: unitedstates
+        continue-on-error: true
+
       - name: Validation summary
         run: |
-          echo "## Solution Validation Passed" >> $GITHUB_STEP_SUMMARY
+          echo "## PR Validation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Pack Managed | Passed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Pack Unmanaged | Passed |" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Solution Packing" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The solution structure is valid and can be deployed." >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Pack Managed | Passed | ${{ steps.verify.outputs.managed_size }} bytes |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pack Unmanaged | Passed | ${{ steps.verify.outputs.unmanaged_size }} bytes |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ env.RUN_CHECKER }}" = "true" ]; then
+            echo "### Solution Checker" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            CHECKER_PASSED="${{ steps.check.outputs.passed }}"
+            if [ "$CHECKER_PASSED" = "true" ]; then
+              echo "**Status: PASSED** (threshold: ${{ env.CHECKER_LEVEL }})" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "**Status: FAILED** (threshold: ${{ env.CHECKER_LEVEL }})" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | ${{ steps.check.outputs.critical-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| High | ${{ steps.check.outputs.high-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium | ${{ steps.check.outputs.medium-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Low | ${{ steps.check.outputs.low-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Informational | ${{ steps.check.outputs.informational-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Solution Checker" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "_Solution Checker was not run_" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "Solution: **${{ env.SOLUTION_NAME }}**" >> $GITHUB_STEP_SUMMARY
+          echo "PR: #${{ github.event.pull_request.number || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if Solution Checker failed
+        if: env.RUN_CHECKER == 'true' && steps.check.outputs.passed == 'false'
+        run: |
+          echo "::error::Solution Checker found issues exceeding the ${{ env.CHECKER_LEVEL }} threshold"
+          echo "Please review the Solution Checker results above and address the issues."
+          exit 1
 
       - name: Clean up
         if: always()
