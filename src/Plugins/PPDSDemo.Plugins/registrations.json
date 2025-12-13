@@ -1,11 +1,12 @@
 {
-  "$schema": "./plugin-registration.schema.json",
+  "$schema": "../../../tools/schemas/plugin-registration.schema.json",
   "version": "1.0",
   "generatedAt": "2025-12-13T19:08:48Z",
   "assemblies": [
     {
       "name": "PPDSDemo.Plugins",
       "type": "Assembly",
+      "solution": "PPDSDemo",
       "path": "./src/Plugins/PPDSDemo.Plugins/bin/Release/net462/PPDSDemo.Plugins.dll",
       "plugins": [
         {

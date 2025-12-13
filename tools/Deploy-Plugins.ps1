@@ -289,6 +289,31 @@ try {
 
         $asmReg = $registrations.assemblies | Select-Object -First 1
 
+        # Validate solution requirement
+        $solutionUniqueName = $asmReg.solution
+        $solution = $null
+
+        if ($asmReg.type -eq "Nuget" -and -not $solutionUniqueName) {
+            Write-PluginError "Solution is required for plugin packages (Nuget type)"
+            Write-PluginLog "Add 'solution' property to registrations.json for this assembly"
+            continue
+        }
+
+        # Look up solution if specified
+        if ($solutionUniqueName -and -not $isWhatIf) {
+            Write-PluginLog "Looking up solution: $solutionUniqueName"
+            $solution = Get-Solution -ApiUrl $apiUrl -AuthHeaders $authHeaders -UniqueName $solutionUniqueName
+            if (-not $solution) {
+                Write-PluginError "Solution not found: $solutionUniqueName"
+                Write-PluginLog "Ensure the solution exists in the target environment"
+                continue
+            }
+            Write-PluginSuccess "Solution found: $($solution.friendlyname) (v$($solution.version))"
+        }
+        elseif ($solutionUniqueName -and $isWhatIf) {
+            Write-PluginLog "[WhatIf] Would use solution: $solutionUniqueName"
+        }
+
         # Deploy assembly
         if (-not $SkipAssembly) {
             $deployPath = if ($asmReg.type -eq "Nuget" -and $asmReg.packagePath) {
@@ -322,6 +347,14 @@ try {
                     continue
                 }
                 Write-PluginLog "Assembly ID: $($assembly.pluginassemblyid)"
+
+                # Add assembly to solution if specified
+                if ($solutionUniqueName) {
+                    Add-SolutionComponent -ApiUrl $apiUrl -AuthHeaders $authHeaders `
+                        -SolutionUniqueName $solutionUniqueName `
+                        -ComponentId $assembly.pluginassemblyid `
+                        -ComponentType $ComponentType.PluginAssembly | Out-Null
+                }
             }
             catch {
                 Write-PluginWarning "Could not query assembly: $($_.Exception.Message)"
@@ -438,6 +471,14 @@ try {
                             $stepId = $newStep.sdkmessageprocessingstepid
                             $totalStepsCreated++
                             Write-PluginSuccess "    Step created: $stepId"
+
+                            # Add step to solution if specified
+                            if ($solutionUniqueName) {
+                                Add-SolutionComponent -ApiUrl $apiUrl -AuthHeaders $authHeaders `
+                                    -SolutionUniqueName $solutionUniqueName `
+                                    -ComponentId $stepId `
+                                    -ComponentType $ComponentType.SdkMessageProcessingStep | Out-Null
+                            }
                         }
                         catch {
                             Write-PluginError "    Failed to create step: $($_.Exception.Message)"
@@ -498,6 +539,14 @@ try {
                                 $newImage = New-StepImage -ApiUrl $apiUrl -AuthHeaders $authHeaders -ImageData $imageData
                                 $totalImagesCreated++
                                 Write-PluginSuccess "      Image created"
+
+                                # Add image to solution if specified
+                                if ($solutionUniqueName -and $newImage.sdkmessageprocessingstepimageid) {
+                                    Add-SolutionComponent -ApiUrl $apiUrl -AuthHeaders $authHeaders `
+                                        -SolutionUniqueName $solutionUniqueName `
+                                        -ComponentId $newImage.sdkmessageprocessingstepimageid `
+                                        -ComponentType $ComponentType.SdkMessageProcessingStepImage | Out-Null
+                                }
                             }
                             catch {
                                 Write-PluginError "      Failed to create image: $($_.Exception.Message)"

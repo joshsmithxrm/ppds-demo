@@ -1,0 +1,8 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["**/registrations.json"],
+      "url": "./tools/schemas/plugin-registration.schema.json"
+    }
+  ]
+}

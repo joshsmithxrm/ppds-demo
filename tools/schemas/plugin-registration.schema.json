@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "plugin-registration.schema.json",
+  "title": "Plugin Registration Configuration",
+  "description": "Schema for Dataverse plugin registration configuration files",
+  "type": "object",
+  "required": ["version", "assemblies"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to the JSON schema file"
+    },
+    "version": {
+      "type": "string",
+      "description": "Schema version",
+      "enum": ["1.0"]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when this file was generated"
+    },
+    "assemblies": {
+      "type": "array",
+      "description": "List of plugin assemblies to register",
+      "items": {
+        "$ref": "#/definitions/assembly"
+      },
+      "minItems": 1
+    }
+  },
+  "definitions": {
+    "assembly": {
+      "type": "object",
+      "required": ["name", "type", "path", "plugins"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Assembly name (without .dll extension)"
+        },
+        "type": {
+          "type": "string",
+          "description": "Assembly type",
+          "enum": ["Assembly", "Nuget"]
+        },
+        "solution": {
+          "type": "string",
+          "description": "Solution unique name to add components to. Required for Nuget type, optional for Assembly type."
+        },
+        "path": {
+          "type": "string",
+          "description": "Relative path to the compiled assembly DLL"
+        },
+        "packagePath": {
+          "type": "string",
+          "description": "Relative path to the NuGet package (for Nuget type only)"
+        },
+        "plugins": {
+          "type": "array",
+          "description": "List of plugin classes in this assembly",
+          "items": {
+            "$ref": "#/definitions/plugin"
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "type": { "const": "Nuget" }
+        }
+      },
+      "then": {
+        "required": ["name", "type", "path", "plugins", "solution"]
+      }
+    },
+    "plugin": {
+      "type": "object",
+      "required": ["typeName", "steps"],
+      "properties": {
+        "typeName": {
+          "type": "string",
+          "description": "Fully qualified type name of the plugin class"
+        },
+        "steps": {
+          "type": "array",
+          "description": "List of SDK message processing steps for this plugin",
+          "items": {
+            "$ref": "#/definitions/step"
+          }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["name", "message", "entity", "stage", "mode", "executionOrder"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Step name (used for matching existing steps)"
+        },
+        "message": {
+          "type": "string",
+          "description": "SDK message name (e.g., Create, Update, Delete, Retrieve)"
+        },
+        "entity": {
+          "type": "string",
+          "description": "Logical name of the entity this step applies to"
+        },
+        "stage": {
+          "type": "string",
+          "description": "Pipeline execution stage",
+          "enum": ["PreValidation", "PreOperation", "PostOperation"]
+        },
+        "mode": {
+          "type": "string",
+          "description": "Execution mode",
+          "enum": ["Synchronous", "Asynchronous"]
+        },
+        "executionOrder": {
+          "type": "integer",
+          "description": "Order of execution relative to other plugins on the same step",
+          "minimum": 1
+        },
+        "filteringAttributes": {
+          "type": ["string", "null"],
+          "description": "Comma-separated list of attributes that trigger this step (for Update message)"
+        },
+        "configuration": {
+          "type": ["string", "null"],
+          "description": "Unsecure configuration string passed to the plugin"
+        },
+        "stepId": {
+          "type": ["string", "null"],
+          "description": "Optional identifier to link images to specific steps when a plugin has multiple steps"
+        },
+        "images": {
+          "type": "array",
+          "description": "List of entity images for this step",
+          "items": {
+            "$ref": "#/definitions/image"
+          }
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "required": ["name", "imageType", "entityAlias"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Image name"
+        },
+        "imageType": {
+          "type": "string",
+          "description": "Type of entity image",
+          "enum": ["PreImage", "PostImage", "Both"]
+        },
+        "attributes": {
+          "type": ["string", "null"],
+          "description": "Comma-separated list of attributes to include in the image (null = all attributes)"
+        },
+        "entityAlias": {
+          "type": "string",
+          "description": "Alias used to access this image in the plugin execution context"
+        }
+      }
+    }
+  }
+}

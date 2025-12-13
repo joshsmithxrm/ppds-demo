@@ -311,12 +311,18 @@ function ConvertTo-RegistrationJson {
         Converts plugin registration objects to JSON format.
     .PARAMETER Assemblies
         Array of assembly registration objects.
+    .PARAMETER SchemaRelativePath
+        Relative path from the output file to the schema file.
+        Default: "../../../tools/schemas/plugin-registration.schema.json"
     .OUTPUTS
         JSON string.
     #>
     param(
         [Parameter(Mandatory = $true)]
-        [array]$Assemblies
+        [array]$Assemblies,
+
+        [Parameter()]
+        [string]$SchemaRelativePath = "../../../tools/schemas/plugin-registration.schema.json"
     )
 
     # Ensure plugins arrays are properly formatted even with single items
@@ -353,6 +359,7 @@ function ConvertTo-RegistrationJson {
         $asmCopy = [PSCustomObject]@{
             name = $asm.name
             type = $asm.type
+            solution = $asm.solution
             path = $asm.path
             plugins = [array]$formattedPlugins
         }
@@ -427,7 +434,7 @@ function ConvertTo-RegistrationJson {
 
     # Build the registration object with explicit property ordering using PSCustomObject
     $registration = [PSCustomObject][ordered]@{
-        '$schema' = "./plugin-registration.schema.json"
+        '$schema' = $SchemaRelativePath
         version = "1.0"
         generatedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
         assemblies = @($formattedAssemblies | ForEach-Object {
@@ -435,6 +442,7 @@ function ConvertTo-RegistrationJson {
             $asmObj = [PSCustomObject][ordered]@{
                 name = $asm.name
                 type = $asm.type
+                solution = $asm.solution
                 path = $asm.path
                 plugins = @($asm.plugins | ForEach-Object {
                     $plugin = $_
@@ -857,6 +865,116 @@ function Get-StepImages {
 }
 
 # =============================================================================
+# Solution Management Functions
+# =============================================================================
+
+function Get-Solution {
+    <#
+    .SYNOPSIS
+        Gets a solution by unique name.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ApiUrl,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$AuthHeaders,
+
+        [Parameter(Mandatory = $true)]
+        [string]$UniqueName
+    )
+
+    $filter = "`$filter=uniquename eq '$UniqueName'"
+    $select = "`$select=solutionid,uniquename,friendlyname,version"
+    try {
+        $result = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "solutions?$filter&$select" -Method GET
+        return $result.value | Select-Object -First 1
+    }
+    catch {
+        Write-PluginDebug "Could not query solution: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Add-SolutionComponent {
+    <#
+    .SYNOPSIS
+        Adds a component to a solution.
+    .DESCRIPTION
+        Uses the AddSolutionComponent action to add plugin assemblies, steps, or images to a solution.
+    .PARAMETER ComponentType
+        The type of component:
+        - 91 = Plugin Assembly
+        - 90 = Plugin Type
+        - 92 = SDK Message Processing Step
+        - 93 = SDK Message Processing Step Image
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ApiUrl,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$AuthHeaders,
+
+        [Parameter(Mandatory = $true)]
+        [string]$SolutionUniqueName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ComponentId,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet(90, 91, 92, 93)]
+        [int]$ComponentType,
+
+        [Parameter()]
+        [switch]$WhatIf
+    )
+
+    $componentTypeName = switch ($ComponentType) {
+        91 { "Plugin Assembly" }
+        90 { "Plugin Type" }
+        92 { "SDK Message Processing Step" }
+        93 { "SDK Message Processing Step Image" }
+    }
+
+    if ($WhatIf) {
+        Write-PluginLog "[WhatIf] Would add $componentTypeName ($ComponentId) to solution '$SolutionUniqueName'"
+        return $true
+    }
+
+    $body = @{
+        ComponentId = $ComponentId
+        ComponentType = $ComponentType
+        SolutionUniqueName = $SolutionUniqueName
+        AddRequiredComponents = $false
+    }
+
+    try {
+        $result = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "AddSolutionComponent" -Method POST -Body $body
+        Write-PluginDebug "Added $componentTypeName to solution '$SolutionUniqueName'"
+        return $true
+    }
+    catch {
+        # Component may already be in solution - check error
+        $errorMsg = $_.Exception.Message
+        if ($errorMsg -match "already exists" -or $errorMsg -match "duplicate") {
+            Write-PluginDebug "$componentTypeName already in solution"
+            return $true
+        }
+        Write-PluginWarning "Failed to add $componentTypeName to solution: $errorMsg"
+        return $false
+    }
+}
+
+# Component type constants for readability
+$script:ComponentType = @{
+    PluginType = 90
+    PluginAssembly = 91
+    SdkMessageProcessingStep = 92
+    SdkMessageProcessingStepImage = 93
+}
+
+# =============================================================================
 # Dataverse Create/Update Functions
 # =============================================================================
 
@@ -1249,6 +1367,8 @@ Export-ModuleMember -Function @(
     'Get-ProcessingStep'
     'Get-ProcessingStepsForAssembly'
     'Get-StepImages'
+    'Get-Solution'
+    'Add-SolutionComponent'
     'New-ProcessingStep'
     'Update-ProcessingStep'
     'Remove-ProcessingStep'
@@ -1263,4 +1383,5 @@ Export-ModuleMember -Function @(
     'DataverseStageValues'
     'DataverseModeValues'
     'DataverseImageTypeValues'
+    'ComponentType'
 )
