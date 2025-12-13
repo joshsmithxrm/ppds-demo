@@ -1,0 +1,116 @@
+# =============================================================================
+# Composite Action: Export Solution
+# =============================================================================
+# Exports and unpacks a Power Platform solution from the authenticated environment.
+#
+# Prerequisites:
+#   - Must authenticate first using pac-auth action
+#
+# Usage:
+#   - name: Export solution
+#     uses: ./.github/actions/export-solution
+#     with:
+#       solution-name: PPDSDemo
+#       output-folder: solutions/PPDSDemo/src
+#
+# =============================================================================
+
+name: 'Export Solution'
+description: 'Export and unpack Power Platform solution from environment'
+
+inputs:
+  solution-name:
+    description: 'Solution unique name to export'
+    required: true
+  output-folder:
+    description: 'Base folder for unpacked solution (Managed/Unmanaged subfolders created)'
+    required: true
+  export-managed:
+    description: 'Export managed version'
+    required: false
+    default: 'true'
+  export-unmanaged:
+    description: 'Export unmanaged version'
+    required: false
+    default: 'true'
+  temp-folder:
+    description: 'Temporary folder for zip files (cleaned up after unpack)'
+    required: false
+    default: './exports'
+
+outputs:
+  managed-folder:
+    description: 'Path to unpacked managed solution folder'
+    value: ${{ steps.paths.outputs.managed }}
+  unmanaged-folder:
+    description: 'Path to unpacked unmanaged solution folder'
+    value: ${{ steps.paths.outputs.unmanaged }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup paths
+      id: paths
+      shell: bash
+      run: |
+        mkdir -p "${{ inputs.temp-folder }}"
+        echo "managed=${{ inputs.output-folder }}/Managed" >> $GITHUB_OUTPUT
+        echo "unmanaged=${{ inputs.output-folder }}/Unmanaged" >> $GITHUB_OUTPUT
+
+    - name: Publish customizations
+      shell: bash
+      run: |
+        echo "Publishing all customizations before export..."
+        pac solution publish
+
+    - name: Export unmanaged solution
+      if: inputs.export-unmanaged == 'true'
+      shell: bash
+      run: |
+        echo "Exporting unmanaged solution: ${{ inputs.solution-name }}"
+        pac solution export \
+          --name "${{ inputs.solution-name }}" \
+          --path "${{ inputs.temp-folder }}/${{ inputs.solution-name }}_unmanaged.zip" \
+          --managed false \
+          --async
+
+    - name: Export managed solution
+      if: inputs.export-managed == 'true'
+      shell: bash
+      run: |
+        echo "Exporting managed solution: ${{ inputs.solution-name }}"
+        pac solution export \
+          --name "${{ inputs.solution-name }}" \
+          --path "${{ inputs.temp-folder }}/${{ inputs.solution-name }}_managed.zip" \
+          --managed true \
+          --async
+
+    - name: Unpack unmanaged solution
+      if: inputs.export-unmanaged == 'true'
+      shell: bash
+      run: |
+        echo "Unpacking unmanaged solution to: ${{ inputs.output-folder }}/Unmanaged"
+        pac solution unpack \
+          --zipfile "${{ inputs.temp-folder }}/${{ inputs.solution-name }}_unmanaged.zip" \
+          --folder "${{ inputs.output-folder }}/Unmanaged" \
+          --processCanvasApps \
+          --allowDelete
+
+    - name: Unpack managed solution
+      if: inputs.export-managed == 'true'
+      shell: bash
+      run: |
+        echo "Unpacking managed solution to: ${{ inputs.output-folder }}/Managed"
+        pac solution unpack \
+          --zipfile "${{ inputs.temp-folder }}/${{ inputs.solution-name }}_managed.zip" \
+          --folder "${{ inputs.output-folder }}/Managed" \
+          --packagetype Managed \
+          --processCanvasApps \
+          --allowDelete
+
+    - name: Clean up temporary zip files
+      shell: bash
+      run: |
+        echo "Cleaning up temporary files..."
+        rm -f "${{ inputs.temp-folder }}/${{ inputs.solution-name }}_unmanaged.zip"
+        rm -f "${{ inputs.temp-folder }}/${{ inputs.solution-name }}_managed.zip"

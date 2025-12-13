@@ -1,0 +1,101 @@
+# =============================================================================
+# Reusable Workflow: Deploy Solution
+# =============================================================================
+# Reusable workflow for deploying a managed Power Platform solution to any
+# environment. Called by cd-qa.yml and cd-prod.yml.
+#
+# Usage:
+#   jobs:
+#     deploy:
+#       uses: ./.github/workflows/_deploy-solution.yml
+#       with:
+#         environment-name: QA
+#         solution-name: PPDSDemo
+#         solution-folder: solutions/PPDSDemo/src/Managed
+#         ref: develop
+#       secrets: inherit
+#
+# =============================================================================
+
+name: 'Deploy Solution'
+
+on:
+  workflow_call:
+    inputs:
+      environment-name:
+        description: 'GitHub environment name (Dev, QA, Prod)'
+        required: true
+        type: string
+      solution-name:
+        description: 'Solution unique name'
+        required: true
+        type: string
+      solution-folder:
+        description: 'Path to Managed solution folder'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to checkout (branch, tag, or SHA)'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      deployed:
+        description: 'Whether deployment completed successfully'
+        value: ${{ jobs.deploy.outputs.deployed }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment-name }}
+
+    outputs:
+      deployed: ${{ steps.complete.outputs.deployed }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup PAC CLI
+        uses: ./.github/actions/setup-pac-cli
+
+      - name: Authenticate to ${{ inputs.environment-name }} environment
+        uses: ./.github/actions/pac-auth
+        with:
+          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
+          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
+          client-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
+          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
+
+      - name: Pack solution (Managed)
+        id: pack
+        uses: ./.github/actions/pack-solution
+        with:
+          solution-folder: ${{ inputs.solution-folder }}
+          solution-name: ${{ inputs.solution-name }}
+          package-type: Managed
+
+      - name: Import solution
+        uses: ./.github/actions/import-solution
+        with:
+          solution-path: ${{ steps.pack.outputs.solution-path }}
+
+      - name: Mark deployment complete
+        id: complete
+        run: echo "deployed=true" >> $GITHUB_OUTPUT
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Solution | ${{ inputs.solution-name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | ${{ inputs.environment-name }} (\`${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}\`) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Type | Managed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch/Ref | ${{ inputs.ref || github.ref }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Actor | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

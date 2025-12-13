@@ -283,7 +283,7 @@ protection:
   required_status_checks:
     strict: true
     contexts:
-      - "deploy-to-qa"  # Must pass before merge
+      - "deploy-to-qa / deploy"  # CD: Deploy to QA workflow
   enforce_admins: true
   restrictions: null  # Anyone with write access can merge after approval
 ```

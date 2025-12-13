@@ -1,0 +1,54 @@
+# =============================================================================
+# CD: Deploy to QA
+# =============================================================================
+# Deploys the managed solution to the QA environment for testing.
+#
+# Triggers:
+#   - Push to develop branch (with solution changes)
+#   - Manual workflow dispatch
+#
+# This workflow is typically triggered automatically when:
+#   - ci-export.yml commits changes to develop (nightly sync)
+#   - A feature branch PR is merged to develop
+#
+# =============================================================================
+# GITHUB ENVIRONMENT REQUIRED
+# =============================================================================
+#
+# QA Environment:
+#   Variables:
+#     - POWERPLATFORM_ENVIRONMENT_URL: https://orgYYYYY.crm.dynamics.com/
+#     - POWERPLATFORM_TENANT_ID: your-tenant-id
+#     - POWERPLATFORM_CLIENT_ID: your-service-principal-app-id
+#   Secrets:
+#     - POWERPLATFORM_CLIENT_SECRET: your-service-principal-secret
+#
+# =============================================================================
+
+name: 'CD: Deploy to QA'
+
+on:
+  # Deploy when develop branch is updated with solution changes
+  push:
+    branches:
+      - develop
+    paths:
+      - 'solutions/PPDSDemo/src/**'
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      solution_name:
+        description: 'Solution unique name'
+        required: true
+        default: 'PPDSDemo'
+
+jobs:
+  deploy-to-qa:
+    uses: ./.github/workflows/_deploy-solution.yml
+    with:
+      environment-name: QA
+      solution-name: ${{ github.event.inputs.solution_name || 'PPDSDemo' }}
+      solution-folder: solutions/PPDSDemo/src/Managed
+      ref: develop
+    secrets: inherit

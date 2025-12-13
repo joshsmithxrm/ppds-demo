@@ -1,0 +1,72 @@
+# =============================================================================
+# Composite Action: Import Solution
+# =============================================================================
+# Imports a Power Platform solution into the authenticated environment.
+#
+# Prerequisites:
+#   - Must authenticate first using pac-auth action
+#
+# Usage:
+#   - name: Import solution
+#     uses: ./.github/actions/import-solution
+#     with:
+#       solution-path: ./exports/MySolution_managed.zip
+#
+# =============================================================================
+
+name: 'Import Solution'
+description: 'Import Power Platform solution to authenticated environment'
+
+inputs:
+  solution-path:
+    description: 'Path to solution zip file'
+    required: true
+  force-overwrite:
+    description: 'Force overwrite if solution exists'
+    required: false
+    default: 'true'
+  publish-changes:
+    description: 'Publish customizations after import'
+    required: false
+    default: 'true'
+  async:
+    description: 'Use async import (recommended for large solutions)'
+    required: false
+    default: 'true'
+  cleanup:
+    description: 'Delete solution zip after import'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Import solution
+      shell: bash
+      run: |
+        echo "Importing solution: ${{ inputs.solution-path }}"
+
+        # Build import command with optional flags
+        IMPORT_CMD="pac solution import --path \"${{ inputs.solution-path }}\""
+
+        if [ "${{ inputs.force-overwrite }}" == "true" ]; then
+          IMPORT_CMD="$IMPORT_CMD --force-overwrite"
+        fi
+
+        if [ "${{ inputs.publish-changes }}" == "true" ]; then
+          IMPORT_CMD="$IMPORT_CMD --publish-changes"
+        fi
+
+        if [ "${{ inputs.async }}" == "true" ]; then
+          IMPORT_CMD="$IMPORT_CMD --async"
+        fi
+
+        echo "Running: $IMPORT_CMD"
+        eval $IMPORT_CMD
+
+    - name: Clean up solution zip
+      if: inputs.cleanup == 'true'
+      shell: bash
+      run: |
+        echo "Cleaning up: ${{ inputs.solution-path }}"
+        rm -f "${{ inputs.solution-path }}"

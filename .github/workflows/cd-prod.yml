@@ -1,0 +1,80 @@
+# =============================================================================
+# CD: Deploy to Production
+# =============================================================================
+# Deploys the managed solution to the Production environment.
+#
+# Triggers:
+#   - Push to main branch (with solution changes)
+#   - Manual workflow dispatch (requires typing "DEPLOY" for safety)
+#
+# Safety measures:
+#   - GitHub Environment protection rules (required reviewers)
+#   - Manual confirmation required for workflow_dispatch
+#   - Only deploys from main branch
+#
+# =============================================================================
+# GITHUB ENVIRONMENT REQUIRED
+# =============================================================================
+#
+# Prod Environment:
+#   Variables:
+#     - POWERPLATFORM_ENVIRONMENT_URL: https://orgZZZZZ.crm.dynamics.com/
+#     - POWERPLATFORM_TENANT_ID: your-tenant-id
+#     - POWERPLATFORM_CLIENT_ID: your-service-principal-app-id
+#   Secrets:
+#     - POWERPLATFORM_CLIENT_SECRET: your-service-principal-secret
+#   Protection Rules (recommended):
+#     - Required reviewers: 1+
+#     - Deployment branches: main only
+#
+# =============================================================================
+
+name: 'CD: Deploy to Production'
+
+on:
+  # Deploy when main branch is updated with solution changes
+  push:
+    branches:
+      - main
+    paths:
+      - 'solutions/PPDSDemo/src/**'
+
+  # Manual trigger with confirmation
+  workflow_dispatch:
+    inputs:
+      solution_name:
+        description: 'Solution unique name'
+        required: true
+        default: 'PPDSDemo'
+      confirm_production:
+        description: 'Type "DEPLOY" to confirm production deployment'
+        required: true
+        default: ''
+
+jobs:
+  # ===========================================================================
+  # Guard job - Fail if manual trigger without confirmation
+  # ===========================================================================
+  require-confirmation:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_production != 'DEPLOY'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment not confirmed
+        run: |
+          echo "::error::Production deployment requires confirmation. Type 'DEPLOY' in the confirm_production input."
+          exit 1
+
+  # ===========================================================================
+  # Deploy job - Uses reusable workflow
+  # ===========================================================================
+  deploy-to-prod:
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_production == 'DEPLOY')
+    uses: ./.github/workflows/_deploy-solution.yml
+    with:
+      environment-name: Prod
+      solution-name: ${{ github.event.inputs.solution_name || 'PPDSDemo' }}
+      solution-folder: solutions/PPDSDemo/src/Managed
+      ref: main
+    secrets: inherit

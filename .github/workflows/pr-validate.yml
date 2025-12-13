@@ -1,0 +1,112 @@
+# =============================================================================
+# PR: Validate Solution
+# =============================================================================
+# Validates that the Power Platform solution can be packed successfully.
+# Provides early feedback on PRs without requiring a live environment.
+#
+# Triggers:
+#   - Pull requests to develop or main that modify solution files
+#   - Manual workflow dispatch
+#
+# Validation checks:
+#   - Managed solution can be packed from source
+#   - Unmanaged solution can be packed from source
+#
+# This catches structural issues before they reach QA/Production.
+#
+# =============================================================================
+
+name: 'PR: Validate Solution'
+
+on:
+  # Validate PRs that modify solution files
+  pull_request:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'solutions/PPDSDemo/src/**'
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      solution_name:
+        description: 'Solution unique name'
+        required: true
+        default: 'PPDSDemo'
+
+env:
+  SOLUTION_NAME: ${{ github.event.inputs.solution_name || 'PPDSDemo' }}
+  SOLUTION_BASE_FOLDER: solutions/PPDSDemo/src
+  SOLUTION_EXPORT_FOLDER: solutions/exports
+
+jobs:
+  validate-solution:
+    name: Validate Solution Structure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PAC CLI
+        uses: ./.github/actions/setup-pac-cli
+
+      - name: Validate managed solution can be packed
+        id: pack-managed
+        uses: ./.github/actions/pack-solution
+        with:
+          solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}/Managed
+          solution-name: ${{ env.SOLUTION_NAME }}
+          output-folder: ${{ env.SOLUTION_EXPORT_FOLDER }}
+          package-type: Managed
+
+      - name: Validate unmanaged solution can be packed
+        id: pack-unmanaged
+        uses: ./.github/actions/pack-solution
+        with:
+          solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}/Unmanaged
+          solution-name: ${{ env.SOLUTION_NAME }}
+          output-folder: ${{ env.SOLUTION_EXPORT_FOLDER }}
+          package-type: Unmanaged
+
+      - name: Verify packed solutions
+        run: |
+          echo "Checking packed solutions..."
+          ls -la ${{ env.SOLUTION_EXPORT_FOLDER }}/
+
+          MANAGED_PATH="${{ steps.pack-managed.outputs.solution-path }}"
+          UNMANAGED_PATH="${{ steps.pack-unmanaged.outputs.solution-path }}"
+
+          if [ ! -f "$MANAGED_PATH" ]; then
+            echo "::error::Managed solution pack failed - file not created: $MANAGED_PATH"
+            exit 1
+          fi
+
+          if [ ! -f "$UNMANAGED_PATH" ]; then
+            echo "::error::Unmanaged solution pack failed - file not created: $UNMANAGED_PATH"
+            exit 1
+          fi
+
+          MANAGED_SIZE=$(stat -c%s "$MANAGED_PATH" 2>/dev/null || stat -f%z "$MANAGED_PATH")
+          UNMANAGED_SIZE=$(stat -c%s "$UNMANAGED_PATH" 2>/dev/null || stat -f%z "$UNMANAGED_PATH")
+
+          echo "Managed solution size: $MANAGED_SIZE bytes"
+          echo "Unmanaged solution size: $UNMANAGED_SIZE bytes"
+          echo ""
+          echo "Both managed and unmanaged solutions packed successfully!"
+
+      - name: Validation summary
+        run: |
+          echo "## Solution Validation Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Pack Managed | Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pack Unmanaged | Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The solution structure is valid and can be deployed." >> $GITHUB_STEP_SUMMARY
+
+      - name: Clean up
+        if: always()
+        run: rm -rf ${{ env.SOLUTION_EXPORT_FOLDER }}

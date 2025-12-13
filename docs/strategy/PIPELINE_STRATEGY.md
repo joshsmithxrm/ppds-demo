@@ -10,9 +10,9 @@ We use PAC CLI directly instead of `microsoft/powerplatform-actions` or Power Pl
 
 | Approach | Pros | Cons | Our Choice |
 |----------|------|------|------------|
-| **PAC CLI** | Portable, reliable, full control | More setup | ✅ Selected |
-| **powerplatform-actions** | Less code | Download issues, less portable | ❌ Not used |
-| **Power Platform Pipelines** | Built-in, simple | No source control | ❌ Not used |
+| **PAC CLI** | Portable, reliable, full control | More setup | Selected |
+| **powerplatform-actions** | Less code | Download issues, less portable | Not used |
+| **Power Platform Pipelines** | Built-in, simple | No source control | Not used |
 
 **Rationale:**
 
@@ -27,129 +27,161 @@ We use PAC CLI directly instead of `microsoft/powerplatform-actions` or Power Pl
 
 ```mermaid
 graph TB
-    subgraph "Export Pipeline"
-        E1[Checkout]
-        E2[Install PAC CLI]
-        E3[Authenticate to Dev]
-        E4[Export Unmanaged]
-        E5[Export Managed]
-        E6[Unpack Both]
-        E7[Commit to develop]
+    subgraph "Composite Actions"
+        A1[setup-pac-cli]
+        A2[pac-auth]
+        A3[pack-solution]
+        A4[import-solution]
+        A5[export-solution]
     end
 
-    subgraph "Deploy Pipeline"
-        D1[Checkout]
-        D2[Install PAC CLI]
-        D3[Authenticate to Target]
-        D4[Pack Managed]
-        D5[Import Solution]
+    subgraph "Reusable Workflows"
+        R1[_deploy-solution.yml]
     end
 
-    E1 --> E2 --> E3 --> E4 --> E5 --> E6 --> E7
-    D1 --> D2 --> D3 --> D4 --> D5
+    subgraph "CI Workflows"
+        CI1[ci-export.yml]
+        CI2[pr-validate.yml]
+    end
+
+    subgraph "CD Workflows"
+        CD1[cd-qa.yml]
+        CD2[cd-prod.yml]
+    end
+
+    A1 --> CI1
+    A2 --> CI1
+    A5 --> CI1
+
+    A1 --> CI2
+    A3 --> CI2
+
+    A1 --> R1
+    A2 --> R1
+    A3 --> R1
+    A4 --> R1
+
+    R1 --> CD1
+    R1 --> CD2
 ```
+
+### Data Flow
+
+```mermaid
+graph LR
+    DEV[Dev Env] -->|nightly export| CI[ci-export.yml]
+    CI -->|commit| DEVELOP[develop branch]
+    DEVELOP -->|push trigger| QA_DEPLOY[cd-qa.yml]
+    QA_DEPLOY -->|deploy| QA[QA Env]
+    DEVELOP -->|PR| MAIN[main branch]
+    MAIN -->|push trigger| PROD_DEPLOY[cd-prod.yml]
+    PROD_DEPLOY -->|deploy| PROD[Prod Env]
+```
+
+---
+
+## Workflow File Naming Convention
+
+### File Names
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Reusable workflow | `_name.yml` (underscore prefix) | `_deploy-solution.yml` |
+| CI workflow | `ci-{purpose}.yml` | `ci-export.yml` |
+| CD workflow | `cd-{target}.yml` | `cd-qa.yml`, `cd-prod.yml` |
+| PR workflow | `pr-{purpose}.yml` | `pr-validate.yml` |
+
+### UI Display Names (`name:` field)
+
+| Pattern | Example |
+|---------|---------|
+| `CI: {Description}` | `CI: Export from Dev` |
+| `CD: Deploy to {Target}` | `CD: Deploy to QA` |
+| `PR: {Description}` | `PR: Validate Solution` |
 
 ---
 
 ## Workflow Files
 
-### Current Implementation
-
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `export-solution.yml` | Nightly, manual | Export from Dev → deploy to QA |
-
-### Planned Workflows
-
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `deploy-to-prod.yml` | Push to `main` | Deploy to Production |
-| `validate-pr.yml` | PR to `develop` | Validate solution can be imported |
+| `ci-export.yml` | Nightly schedule, manual | Export from Dev to develop branch |
+| `cd-qa.yml` | Push to develop, manual | Deploy to QA environment |
+| `cd-prod.yml` | Push to main, manual | Deploy to Production environment |
+| `pr-validate.yml` | PR to develop/main | Validate solution can be packed |
+| `_deploy-solution.yml` | Called by cd-* workflows | Reusable deploy pattern |
 
 ---
 
-## Pipeline Components
+## Composite Actions
 
-### PAC CLI Installation
+Reusable step sequences are extracted into composite actions in `.github/actions/`:
 
-```yaml
-- name: Setup .NET
-  uses: actions/setup-dotnet@v4
-  with:
-    dotnet-version: '8.x'
+| Action | Purpose | Key Inputs |
+|--------|---------|------------|
+| `setup-pac-cli` | Install .NET and PAC CLI | `dotnet-version` |
+| `pac-auth` | Authenticate to environment | `environment-url`, `tenant-id`, `client-id`, `client-secret` |
+| `pack-solution` | Pack solution from source | `solution-folder`, `solution-name`, `package-type` |
+| `import-solution` | Import solution to environment | `solution-path`, `force-overwrite` |
+| `export-solution` | Export and unpack solution | `solution-name`, `output-folder` |
 
-- name: Install Power Platform CLI
-  run: |
-    dotnet tool install --global Microsoft.PowerApps.CLI.Tool
-    echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-```
-
-### Authentication
+### Usage Example
 
 ```yaml
-- name: Authenticate to environment
-  run: |
-    pac auth create \
-      --environment "${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}" \
-      --tenant "${{ vars.POWERPLATFORM_TENANT_ID }}" \
-      --applicationId "${{ vars.POWERPLATFORM_CLIENT_ID }}" \
-      --clientSecret "${{ secrets.POWERPLATFORM_CLIENT_SECRET }}"
+steps:
+  - name: Checkout
+    uses: actions/checkout@v4
+
+  - name: Setup PAC CLI
+    uses: ./.github/actions/setup-pac-cli
+
+  - name: Authenticate
+    uses: ./.github/actions/pac-auth
+    with:
+      environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
+      tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
+      client-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
+      client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
+
+  - name: Pack solution
+    id: pack
+    uses: ./.github/actions/pack-solution
+    with:
+      solution-folder: solutions/PPDSDemo/src/Managed
+      solution-name: PPDSDemo
+      package-type: Managed
+
+  - name: Import solution
+    uses: ./.github/actions/import-solution
+    with:
+      solution-path: ${{ steps.pack.outputs.solution-path }}
 ```
 
-### Export Operations
+---
+
+## Reusable Workflow
+
+The `_deploy-solution.yml` workflow encapsulates the full deploy pattern:
 
 ```yaml
-# Export both managed and unmanaged
-- name: Export Solution (Unmanaged)
-  run: |
-    pac solution export \
-      --name "${{ env.SOLUTION_NAME }}" \
-      --path "./exports/${{ env.SOLUTION_NAME }}_unmanaged.zip" \
-      --managed false
-
-- name: Export Solution (Managed)
-  run: |
-    pac solution export \
-      --name "${{ env.SOLUTION_NAME }}" \
-      --path "./exports/${{ env.SOLUTION_NAME }}_managed.zip" \
-      --managed true
+jobs:
+  deploy-to-qa:
+    uses: ./.github/workflows/_deploy-solution.yml
+    with:
+      environment-name: QA
+      solution-name: PPDSDemo
+      solution-folder: solutions/PPDSDemo/src/Managed
+      ref: develop
+    secrets: inherit
 ```
 
-### Unpack Operations
-
-```yaml
-- name: Unpack Solution (Unmanaged)
-  run: |
-    pac solution unpack \
-      --zipfile "./exports/${{ env.SOLUTION_NAME }}_unmanaged.zip" \
-      --folder "./solutions/${{ env.SOLUTION_NAME }}/src/Unmanaged" \
-      --processCanvasApps
-
-- name: Unpack Solution (Managed)
-  run: |
-    pac solution unpack \
-      --zipfile "./exports/${{ env.SOLUTION_NAME }}_managed.zip" \
-      --folder "./solutions/${{ env.SOLUTION_NAME }}/src/Managed" \
-      --packagetype Managed
-```
-
-### Pack and Import Operations
-
-```yaml
-- name: Pack Solution (Managed)
-  run: |
-    pac solution pack \
-      --zipfile "./exports/${{ env.SOLUTION_NAME }}_managed.zip" \
-      --folder "./solutions/${{ env.SOLUTION_NAME }}/src/Managed" \
-      --packagetype Managed
-
-- name: Import Solution
-  run: |
-    pac solution import \
-      --path "./exports/${{ env.SOLUTION_NAME }}_managed.zip" \
-      --force-overwrite \
-      --publish-changes
-```
+**Inputs:**
+| Input | Required | Description |
+|-------|----------|-------------|
+| `environment-name` | Yes | GitHub environment (Dev, QA, Prod) |
+| `solution-name` | Yes | Solution unique name |
+| `solution-folder` | Yes | Path to Managed solution folder |
+| `ref` | No | Git ref to checkout |
 
 ---
 
@@ -160,7 +192,7 @@ graph TB
 Each Power Platform environment maps to a GitHub environment:
 
 ```
-GitHub Environment: Dev
+GitHub Environment: Dev / QA / Prod
 ├── Variables:
 │   ├── POWERPLATFORM_ENVIRONMENT_URL
 │   ├── POWERPLATFORM_TENANT_ID
@@ -180,39 +212,47 @@ GitHub Environment: Dev
 
 ---
 
-## Extensibility Points
+## Adding New Workflows
 
-### Adding Solution Validation
+The modular architecture makes adding new workflows simple:
+
+### Example: Add UAT Deployment
 
 ```yaml
+# .github/workflows/cd-uat.yml
+name: 'CD: Deploy to UAT'
+
+on:
+  workflow_dispatch:
+    inputs:
+      solution_name:
+        default: 'PPDSDemo'
+
+jobs:
+  deploy-to-uat:
+    uses: ./.github/workflows/_deploy-solution.yml
+    with:
+      environment-name: UAT  # Create this GitHub environment
+      solution-name: ${{ github.event.inputs.solution_name || 'PPDSDemo' }}
+      solution-folder: solutions/PPDSDemo/src/Managed
+    secrets: inherit
+```
+
+### Example: Add Solution Checker
+
+```yaml
+# In any workflow, add solution checker step:
 - name: Run Solution Checker
   run: |
     pac solution check \
-      --path "./exports/${{ env.SOLUTION_NAME }}.zip" \
+      --path "${{ steps.pack.outputs.solution-path }}" \
       --outputDirectory "./reports"
-```
 
-### Adding Custom Pre-Deployment Validation
-
-```yaml
-- name: Validate solution structure
-  run: |
-    # Custom validation script
-    ./scripts/validate-solution.ps1 -Path "./solutions/${{ env.SOLUTION_NAME }}"
-```
-
-### Adding Multi-Solution Support
-
-For solutions with dependencies, deploy in order:
-
-```yaml
-jobs:
-  deploy-base:
-    # Deploy base solution first
-
-  deploy-dependent:
-    needs: deploy-base
-    # Deploy dependent solution after base succeeds
+- name: Upload checker results
+  uses: actions/upload-artifact@v4
+  with:
+    name: solution-checker-results
+    path: ./reports/
 ```
 
 ---
@@ -270,14 +310,13 @@ For authentication, Azure DevOps uses the Power Platform Build Tools extension o
 | Enhancement | Description | Priority |
 |-------------|-------------|----------|
 | Solution Checker integration | Automated quality gates | High |
-| PR validation pipeline | Test import before merge | High |
-| Multi-solution templates | Reusable pipeline templates | Medium |
 | Approval gates | Manual approval for production | Medium |
+| Multi-solution templates | Dependency-aware deployments | Medium |
 | Rollback automation | Quick rollback on failure | Low |
 
 ---
 
-## 🔗 See Also
+## See Also
 
 - [ALM_OVERVIEW.md](ALM_OVERVIEW.md) - High-level ALM philosophy
 - [ENVIRONMENT_STRATEGY.md](ENVIRONMENT_STRATEGY.md) - Environment configuration
