@@ -1,5 +1,6 @@
 version: 2
 updates:
+  # GitHub Actions updates
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -11,3 +12,27 @@ updates:
       - "dependencies"
       - "github-actions"
     open-pull-requests-limit: 5
+
+  # NuGet package updates (plugins, workflow activities, etc.)
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "nuget"
+    open-pull-requests-limit: 5
+    # Group minor/patch updates to reduce PR noise
+    groups:
+      microsoft-sdk:
+        patterns:
+          - "Microsoft.CrmSdk.*"
+          - "Microsoft.PowerPlatform.*"
+      testing:
+        patterns:
+          - "FakeXrmEasy.*"
+          - "MSTest.*"
+          - "Moq"

@@ -1,0 +1,98 @@
+# =============================================================================
+# Security: CodeQL Analysis
+# =============================================================================
+# Performs semantic code analysis to find security vulnerabilities and
+# code quality issues in C# plugin code.
+#
+# Triggers:
+#   - Push to develop or main branches
+#   - Pull requests to develop or main
+#   - Weekly schedule (Monday 9 AM UTC)
+#
+# For more info: https://docs.github.com/en/code-security/code-scanning
+# =============================================================================
+
+name: 'Security: CodeQL'
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'src/**/*.cs'
+      - '**/*.csproj'
+      - '*.sln'
+
+  pull_request:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'src/**/*.cs'
+      - '**/*.csproj'
+      - '*.sln'
+
+  schedule:
+    # Weekly scan on Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze C#
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect .NET solution
+        id: detect
+        run: |
+          SLN_PATH=$(find . -maxdepth 1 -name "*.sln" | head -1 || echo "")
+          if [ -n "$SLN_PATH" ] && [ -f "$SLN_PATH" ]; then
+            echo "Found .NET solution: $SLN_PATH"
+            echo "has-solution=true" >> $GITHUB_OUTPUT
+          else
+            echo "No .NET solution found - skipping CodeQL"
+            echo "has-solution=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Initialize CodeQL
+        if: steps.detect.outputs.has-solution == 'true'
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          # Use security-and-quality for comprehensive analysis
+          queries: security-and-quality
+
+      - name: Setup .NET SDK
+        if: steps.detect.outputs.has-solution == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Build solution
+        if: steps.detect.outputs.has-solution == 'true'
+        run: |
+          dotnet restore
+          dotnet build --no-restore --configuration Release
+
+      - name: Perform CodeQL Analysis
+        if: steps.detect.outputs.has-solution == 'true'
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"
+
+      - name: Skip notification
+        if: steps.detect.outputs.has-solution != 'true'
+        run: |
+          echo "::notice::No .NET solution found - CodeQL analysis skipped"

@@ -86,6 +86,26 @@ env:
 
 jobs:
   # ============================================
+  # Job 0: Dependency Review (Security)
+  # ============================================
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          # Fail on high and critical vulnerabilities
+          fail-on-severity: high
+          # Also check for license issues
+          deny-licenses: GPL-3.0, AGPL-3.0
+
+  # ============================================
   # Job 1: Build and Test .NET Code
   # ============================================
   build-code:
@@ -332,17 +352,24 @@ jobs:
   status-check:
     name: Validation Status
     runs-on: ubuntu-latest
-    needs: [build-code, validate-solution]
+    needs: [dependency-review, build-code, validate-solution]
     if: always()
 
     steps:
       - name: Check overall status
         run: |
+          DEPENDENCY_RESULT="${{ needs.dependency-review.result }}"
           BUILD_RESULT="${{ needs.build-code.result }}"
           VALIDATE_RESULT="${{ needs.validate-solution.result }}"
 
+          echo "Dependency review result: $DEPENDENCY_RESULT"
           echo "Build job result: $BUILD_RESULT"
           echo "Validate job result: $VALIDATE_RESULT"
+
+          if [ "$DEPENDENCY_RESULT" = "failure" ]; then
+            echo "::error::Dependency review failed - vulnerable or unlicensed dependencies detected"
+            exit 1
+          fi
 
           if [ "$BUILD_RESULT" = "failure" ]; then
             echo "::error::Code build failed"
