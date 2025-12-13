@@ -83,8 +83,12 @@ function Set-Ruleset {
         return
     }
 
-    # Check if ruleset already exists
-    $existing = gh api "$endpoint" 2>$null | ConvertFrom-Json | Where-Object { $_.name -eq $Name }
+    # Check if ruleset already exists (handle case where no rulesets exist)
+    $existing = try {
+        gh api "$endpoint" 2>$null | ConvertFrom-Json | Where-Object { $_.name -eq $Name }
+    } catch {
+        $null
+    }
 
     try {
         if ($existing) {
@@ -158,6 +162,9 @@ $mainRuleset = @{
     }
     rules = @(
         @{
+            type = "deletion"
+        },
+        @{
             type = "required_status_checks"
             parameters = @{
                 strict_required_status_checks_policy = $true
@@ -176,7 +183,7 @@ $mainRuleset = @{
                 dismiss_stale_reviews_on_push = $true
                 require_code_owner_review = $false
                 require_last_push_approval = $true
-                required_review_thread_resolution = $false
+                required_review_thread_resolution = $true
                 allowed_merge_methods = @("merge")  # Merge commit only, no squash
             }
         }
@@ -195,6 +202,9 @@ $developRuleset = @{
         }
     }
     rules = @(
+        @{
+            type = "deletion"
+        },
         @{
             type = "required_status_checks"
             parameters = @{

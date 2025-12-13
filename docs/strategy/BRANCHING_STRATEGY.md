@@ -287,9 +287,11 @@ Ruleset definitions are stored in `.github/rulesets/` for reference.
 | Required approvals | 1 | Human review before production |
 | Dismiss stale reviews | Yes | Re-review after new commits |
 | Require last push approval | Yes | Final review after any changes |
+| Require conversation resolution | Yes | All feedback must be addressed |
 | Status checks (strict) | Yes | Branch must be up-to-date |
 | Required checks | `Validation Status` | PR validation workflow |
 | Allowed merge methods | **Merge commit only** | Preserve feature commits on main |
+| Branch deletion | Blocked | Prevent accidental deletion |
 | Force pushes | Blocked | Protect history |
 
 **Key:** `allowed_merge_methods: ["merge"]` - Squash is NOT allowed on main.
@@ -304,6 +306,7 @@ Ruleset definitions are stored in `.github/rulesets/` for reference.
 | Status checks (strict) | No | Nightly exports would conflict |
 | Required checks | `Validation Status` | PR validation workflow |
 | Allowed merge methods | **Squash only** | Clean feature history |
+| Branch deletion | Blocked | Prevent accidental deletion |
 | Force pushes | Blocked | Protect history |
 
 **Key:** `allowed_merge_methods: ["squash"]` - Merge commits NOT allowed on develop.
