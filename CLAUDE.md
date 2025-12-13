@@ -109,7 +109,52 @@ pac solution export --name PPDSDemo --path exports --managed true --overwrite
 
 # Unpack with packagetype Both
 pac solution unpack --zipfile exports/PPDSDemo.zip --folder solutions/PPDSDemo/src --packagetype Both --allowDelete --allowWrite
+
+# Extract plugin registrations from compiled assemblies
+.\tools\Extract-PluginRegistrations.ps1
+
+# Deploy plugins to Dev environment
+.\tools\Deploy-Plugins.ps1 -Environment Dev
+
+# Deploy with dry run
+.\tools\Deploy-Plugins.ps1 -WhatIf
 ```
+
+---
+
+## Plugin Deployment
+
+Plugins use attribute-based registration with automated deployment tooling.
+
+### Step Registration Attributes
+
+```csharp
+[PluginStep(
+    Message = "Update",
+    EntityLogicalName = "account",
+    Stage = PluginStage.PostOperation,
+    Mode = PluginMode.Asynchronous,
+    FilteringAttributes = "name,telephone1")]
+[PluginImage(
+    ImageType = PluginImageType.PreImage,
+    Name = "PreImage",
+    Attributes = "name,telephone1")]
+public class AccountAuditPlugin : PluginBase
+{
+    // Plugin implementation
+}
+```
+
+### Deployment Workflow
+
+1. Add `[PluginStep]` and `[PluginImage]` attributes to plugin classes
+2. Build: `dotnet build -c Release`
+3. Extract: `.\tools\Extract-PluginRegistrations.ps1`
+4. Deploy: `.\tools\Deploy-Plugins.ps1`
+
+The `registrations.json` files are committed to source control for review and documentation.
+
+See [docs/design/PLUGIN_DEPLOYMENT_DESIGN.md](docs/design/PLUGIN_DEPLOYMENT_DESIGN.md) for details.
 
 ---
 
