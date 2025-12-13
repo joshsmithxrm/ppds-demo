@@ -83,11 +83,15 @@ function Set-Ruleset {
         return
     }
 
-    # Check if ruleset already exists (handle case where no rulesets exist)
-    $existing = try {
-        gh api "$endpoint" 2>$null | ConvertFrom-Json | Where-Object { $_.name -eq $Name }
-    } catch {
-        $null
+    # Check if ruleset already exists (handle case where no rulesets exist or API errors)
+    $existing = $null
+    $listResult = gh api "$endpoint" 2>&1
+    if ($LASTEXITCODE -eq 0 -and $listResult) {
+        try {
+            $existing = $listResult | ConvertFrom-Json | Where-Object { $_.name -eq $Name }
+        } catch {
+            Write-Host "  Warning: Could not parse existing rulesets, will attempt to create new" -ForegroundColor Yellow
+        }
     }
 
     try {
@@ -129,13 +133,16 @@ function Set-RepoMergeSettings {
     }
 
     try {
-        gh api "repos/$Owner/$Repo" -X PATCH `
+        $result = gh api "repos/$Owner/$Repo" -X PATCH `
             -f allow_merge_commit=true `
             -f allow_squash_merge=true `
             -f allow_rebase_merge=false `
             -f squash_merge_commit_title=PR_TITLE `
-            -f squash_merge_commit_message=PR_BODY `
-            --silent
+            -f squash_merge_commit_message=PR_BODY 2>&1
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "API call failed: $result"
+        }
 
         Write-Host "  Merge settings configured (merge + squash enabled, rebase disabled)" -ForegroundColor Green
     }
@@ -168,6 +175,7 @@ $mainRuleset = @{
             type = "required_status_checks"
             parameters = @{
                 strict_required_status_checks_policy = $true
+                do_not_enforce_on_create = $false
                 required_status_checks = @(
                     @{ context = "Validation Status" }
                 )
@@ -209,6 +217,7 @@ $developRuleset = @{
             type = "required_status_checks"
             parameters = @{
                 strict_required_status_checks_policy = $false
+                do_not_enforce_on_create = $false
                 required_status_checks = @(
                     @{ context = "Validation Status" }
                 )
@@ -224,7 +233,7 @@ $developRuleset = @{
                 dismiss_stale_reviews_on_push = $true
                 require_code_owner_review = $false
                 require_last_push_approval = $false
-                required_review_thread_resolution = $false
+                required_review_thread_resolution = $true
                 allowed_merge_methods = @("squash")  # Squash only, no merge commit
             }
         }

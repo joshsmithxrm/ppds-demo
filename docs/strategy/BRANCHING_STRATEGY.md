@@ -303,6 +303,7 @@ Ruleset definitions are stored in `.github/rulesets/` for reference.
 | Require PR | Yes | Feature branches merge via PR |
 | Required approvals | 1 | Code review |
 | Dismiss stale reviews | Yes | Re-review after changes |
+| Require conversation resolution | Yes | All feedback must be addressed |
 | Status checks (strict) | No | Nightly exports would conflict |
 | Required checks | `Validation Status` | PR validation workflow |
 | Allowed merge methods | **Squash only** | Clean feature history |
@@ -311,6 +312,8 @@ Ruleset definitions are stored in `.github/rulesets/` for reference.
 
 **Key:** `allowed_merge_methods: ["squash"]` - Merge commits NOT allowed on develop.
 
+> **Note:** Required approvals is set to 1 (not 0) to ensure code review even for the integration branch.
+
 ### Repository Merge Settings
 
 Repository-level settings (Settings → Pull Requests) enable both methods:
@@ -318,17 +321,31 @@ Repository-level settings (Settings → Pull Requests) enable both methods:
 - ✅ Allow squash merging (for develop)
 - ❌ Allow rebase merging (disabled)
 
+**Squash commit formatting:** When squash merging to `develop`, commits use:
+- **Title:** PR title (clean, descriptive feature name)
+- **Message:** PR body (contains context, linked issues, etc.)
+
+This ensures squashed commits are meaningful and traceable back to their PR.
+
 The **rulesets** control which method is available for each target branch.
 
 ### Applying Rulesets
 
-Rulesets can be imported via GitHub API:
+**Recommended:** Use the PowerShell script for idempotent setup (handles both create and update):
+
+```powershell
+# Configure all rulesets and merge settings
+.\tools\Setup-BranchProtection.ps1
+
+# Preview changes without applying
+.\tools\Setup-BranchProtection.ps1 -WhatIf
+```
+
+**Manual API (initial creation only):**
 
 ```bash
-# Apply develop ruleset
+# These POST commands only work for NEW rulesets (fail if already exists)
 gh api repos/OWNER/REPO/rulesets -X POST --input .github/rulesets/develop.json
-
-# Apply main ruleset
 gh api repos/OWNER/REPO/rulesets -X POST --input .github/rulesets/main.json
 ```
 
