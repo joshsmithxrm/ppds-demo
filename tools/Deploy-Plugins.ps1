@@ -526,6 +526,14 @@ try {
                             $stepId = $existingStep.sdkmessageprocessingstepid
                             $totalStepsUpdated++
                             Write-PluginSuccess "    Step updated"
+
+                            # Ensure step is in solution (may not be if created before solution management)
+                            if ($solutionUniqueName) {
+                                Add-SolutionComponent -ApiUrl $apiUrl -AuthHeaders $authHeaders `
+                                    -SolutionUniqueName $solutionUniqueName `
+                                    -ComponentId $stepId `
+                                    -ComponentType $ComponentType.SdkMessageProcessingStep | Out-Null
+                            }
                         }
                         catch {
                             Write-PluginError "    Failed to update step: $($_.Exception.Message)"
