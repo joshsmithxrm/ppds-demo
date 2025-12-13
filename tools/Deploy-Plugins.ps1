@@ -31,6 +31,13 @@
 .PARAMETER Build
     Build projects before deployment.
 
+.PARAMETER DetectDrift
+    Run drift detection to compare configuration with Dataverse state.
+    Can be combined with deployment or used standalone with -DriftOnly.
+
+.PARAMETER DriftOnly
+    Only run drift detection, skip deployment. Implies -DetectDrift.
+
 .PARAMETER EnvironmentUrl
     Dataverse environment URL (e.g., https://myorg.crm.dynamics.com).
 
@@ -73,6 +80,14 @@
     .\Deploy-Plugins.ps1 -WhatIf
     Shows what would be deployed without making changes.
 
+.EXAMPLE
+    .\Deploy-Plugins.ps1 -DetectDrift
+    Deploys plugins and reports any drift between config and Dataverse.
+
+.EXAMPLE
+    .\Deploy-Plugins.ps1 -DriftOnly
+    Only runs drift detection, no deployment.
+
 .NOTES
     Requires Microsoft.Xrm.Data.PowerShell module.
     Install with: Install-Module Microsoft.Xrm.Data.PowerShell -Scope CurrentUser
@@ -95,6 +110,12 @@ param(
 
     [Parameter()]
     [switch]$Build,
+
+    [Parameter()]
+    [switch]$DetectDrift,
+
+    [Parameter()]
+    [switch]$DriftOnly,
 
     # Authentication options
     [Parameter()]
@@ -143,11 +164,22 @@ if (-not (Test-Path $authPath)) {
 # Get WhatIf from common parameters
 $isWhatIf = $WhatIfPreference -or $PSCmdlet.MyInvocation.BoundParameters["WhatIf"]
 
+# DriftOnly implies DetectDrift
+if ($DriftOnly) {
+    $DetectDrift = $true
+}
+
 Write-PluginLog "Plugin Deployment Tool"
 Write-PluginLog "Repository: $repoRoot"
 Write-PluginLog "Environment: $Environment"
 if ($isWhatIf) {
     Write-PluginWarning "Running in WhatIf mode - no changes will be made"
+}
+if ($DriftOnly) {
+    Write-PluginLog "Mode: Drift detection only (no deployment)"
+}
+elseif ($DetectDrift) {
+    Write-PluginLog "Mode: Deployment with drift detection"
 }
 Write-PluginLog ""
 
@@ -254,11 +286,15 @@ try {
     }
 
     # =============================================================================
-    # Deployment Loop
+    # Drift Detection / Deployment Loop
     # =============================================================================
 
     Write-PluginLog ""
-    Write-PluginLog "Starting deployment..."
+    if ($DriftOnly) {
+        Write-PluginLog "Starting drift detection..."
+    } else {
+        Write-PluginLog "Starting deployment..."
+    }
 
     $totalStepsCreated = 0
     $totalStepsUpdated = 0
@@ -266,11 +302,17 @@ try {
     $totalImagesUpdated = 0
     $totalOrphansWarned = 0
     $totalOrphansDeleted = 0
+    $allDriftReports = @()
+    $totalDriftItems = 0
 
     foreach ($proj in $projects) {
         Write-PluginLog ""
         Write-PluginLog ("=" * 60)
-        Write-PluginLog "Deploying: $($proj.Name) ($($proj.Type))"
+        if ($DriftOnly) {
+            Write-PluginLog "Checking: $($proj.Name) ($($proj.Type))"
+        } else {
+            Write-PluginLog "Deploying: $($proj.Name) ($($proj.Type))"
+        }
         Write-PluginLog ("=" * 60)
 
         # Check for registrations.json
@@ -314,6 +356,34 @@ try {
         }
         elseif ($solutionUniqueName -and $isWhatIf) {
             Write-PluginLog "[WhatIf] Would use solution: $solutionUniqueName"
+        }
+
+        # Run drift detection if requested
+        if ($DetectDrift -and -not $isWhatIf) {
+            Write-PluginLog ""
+            Write-PluginLog "Running drift detection..."
+            try {
+                $drift = Get-PluginDrift -ApiUrl $apiUrl -AuthHeaders $authHeaders `
+                    -AssemblyName $asmReg.name -ConfiguredPlugins $asmReg.plugins
+
+                Write-DriftReport -Drift $drift
+                $allDriftReports += $drift
+
+                if ($drift.HasDrift) {
+                    $driftCount = $drift.OrphanedSteps.Count + $drift.MissingSteps.Count +
+                                  $drift.ModifiedSteps.Count + $drift.OrphanedImages.Count +
+                                  $drift.MissingImages.Count + $drift.ModifiedImages.Count
+                    $totalDriftItems += $driftCount
+                }
+            }
+            catch {
+                Write-PluginWarning "Drift detection failed: $($_.Exception.Message)"
+            }
+        }
+
+        # If DriftOnly mode, skip deployment and continue to next project
+        if ($DriftOnly) {
+            continue
         }
 
         # Deploy assembly
@@ -602,21 +672,66 @@ try {
 
     Write-PluginLog ""
     Write-PluginLog ("=" * 60)
-    Write-PluginLog "Deployment Summary"
+    if ($DriftOnly) {
+        Write-PluginLog "Drift Detection Summary"
+    } else {
+        Write-PluginLog "Deployment Summary"
+    }
     Write-PluginLog ("=" * 60)
     Write-PluginLog "Environment: $Environment ($connectedUrl)"
-    Write-PluginLog "Projects deployed: $($projects.Count)"
-    Write-PluginLog ""
-    Write-PluginSuccess "Steps created: $totalStepsCreated"
-    Write-PluginSuccess "Steps updated: $totalStepsUpdated"
-    Write-PluginSuccess "Images created: $totalImagesCreated"
-    Write-PluginSuccess "Images updated: $totalImagesUpdated"
 
-    if ($totalOrphansWarned -gt 0) {
-        Write-PluginWarning "Orphaned steps (not deleted): $totalOrphansWarned"
-    }
-    if ($totalOrphansDeleted -gt 0) {
-        Write-PluginWarning "Orphaned steps deleted: $totalOrphansDeleted"
+    if ($DriftOnly) {
+        Write-PluginLog "Projects checked: $($projects.Count)"
+        Write-PluginLog ""
+
+        if ($totalDriftItems -eq 0) {
+            Write-PluginSuccess "No drift detected - all configurations match Dataverse"
+        } else {
+            Write-PluginWarning "Total drift items: $totalDriftItems"
+
+            # Aggregate drift counts
+            $totalOrphanedSteps = ($allDriftReports | ForEach-Object { $_.OrphanedSteps.Count } | Measure-Object -Sum).Sum
+            $totalMissingSteps = ($allDriftReports | ForEach-Object { $_.MissingSteps.Count } | Measure-Object -Sum).Sum
+            $totalModifiedSteps = ($allDriftReports | ForEach-Object { $_.ModifiedSteps.Count } | Measure-Object -Sum).Sum
+            $totalOrphanedImages = ($allDriftReports | ForEach-Object { $_.OrphanedImages.Count } | Measure-Object -Sum).Sum
+            $totalMissingImages = ($allDriftReports | ForEach-Object { $_.MissingImages.Count } | Measure-Object -Sum).Sum
+            $totalModifiedImages = ($allDriftReports | ForEach-Object { $_.ModifiedImages.Count } | Measure-Object -Sum).Sum
+
+            if ($totalOrphanedSteps -gt 0) { Write-PluginWarning "  Orphaned steps: $totalOrphanedSteps" }
+            if ($totalMissingSteps -gt 0) { Write-PluginWarning "  Missing steps: $totalMissingSteps" }
+            if ($totalModifiedSteps -gt 0) { Write-PluginWarning "  Modified steps: $totalModifiedSteps" }
+            if ($totalOrphanedImages -gt 0) { Write-PluginWarning "  Orphaned images: $totalOrphanedImages" }
+            if ($totalMissingImages -gt 0) { Write-PluginWarning "  Missing images: $totalMissingImages" }
+            if ($totalModifiedImages -gt 0) { Write-PluginWarning "  Modified images: $totalModifiedImages" }
+
+            Write-PluginLog ""
+            Write-PluginLog "Run without -DriftOnly to deploy and sync configurations"
+        }
+    } else {
+        Write-PluginLog "Projects deployed: $($projects.Count)"
+        Write-PluginLog ""
+        Write-PluginSuccess "Steps created: $totalStepsCreated"
+        Write-PluginSuccess "Steps updated: $totalStepsUpdated"
+        Write-PluginSuccess "Images created: $totalImagesCreated"
+        Write-PluginSuccess "Images updated: $totalImagesUpdated"
+
+        if ($totalOrphansWarned -gt 0) {
+            Write-PluginWarning "Orphaned steps (not deleted): $totalOrphansWarned"
+        }
+        if ($totalOrphansDeleted -gt 0) {
+            Write-PluginWarning "Orphaned steps deleted: $totalOrphansDeleted"
+        }
+
+        # Show drift summary if detection was enabled
+        if ($DetectDrift -and $allDriftReports.Count -gt 0) {
+            Write-PluginLog ""
+            if ($totalDriftItems -eq 0) {
+                Write-PluginSuccess "Post-deployment drift check: No drift detected"
+            } else {
+                Write-PluginWarning "Post-deployment drift remaining: $totalDriftItems items"
+                Write-PluginLog "Run -DriftOnly for detailed drift report"
+            }
+        }
     }
 
     if ($isWhatIf) {

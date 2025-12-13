@@ -846,7 +846,7 @@ function Get-ProcessingStepsForAssembly {
     $steps = @()
     foreach ($type in $types.value) {
         $stepsFilter = "`$filter=_plugintypeid_value eq '$($type.plugintypeid)'"
-        $select = "`$select=sdkmessageprocessingstepid,name,stage,mode"
+        $select = "`$select=sdkmessageprocessingstepid,name,stage,mode,rank,filteringattributes,configuration"
         $typeSteps = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "sdkmessageprocessingsteps?$stepsFilter&$select" -Method GET
         $steps += $typeSteps.value
     }
@@ -1384,6 +1384,321 @@ function Deploy-PluginAssembly {
 }
 
 # =============================================================================
+# Drift Detection Functions
+# =============================================================================
+
+function Get-PluginDrift {
+    <#
+    .SYNOPSIS
+        Compares plugin registration configuration with Dataverse state to detect drift.
+    .DESCRIPTION
+        Analyzes differences between the registrations.json configuration and actual
+        Dataverse plugin registrations. Reports orphaned components, missing components,
+        and configuration differences.
+    .PARAMETER ApiUrl
+        Dataverse Web API base URL.
+    .PARAMETER AuthHeaders
+        Authentication headers for API calls.
+    .PARAMETER AssemblyName
+        Name of the plugin assembly to check.
+    .PARAMETER ConfiguredPlugins
+        Array of plugin objects from registrations.json.
+    .OUTPUTS
+        PSCustomObject with drift details.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ApiUrl,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$AuthHeaders,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AssemblyName,
+
+        [Parameter(Mandatory = $true)]
+        [array]$ConfiguredPlugins
+    )
+
+    $drift = [PSCustomObject]@{
+        AssemblyName = $AssemblyName
+        HasDrift = $false
+        OrphanedSteps = @()
+        MissingSteps = @()
+        ModifiedSteps = @()
+        OrphanedImages = @()
+        MissingImages = @()
+        ModifiedImages = @()
+    }
+
+    # Get assembly from Dataverse
+    $assembly = Get-PluginAssembly -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Name $AssemblyName
+    if (-not $assembly) {
+        # Assembly doesn't exist - all configured steps are "missing"
+        foreach ($plugin in $ConfiguredPlugins) {
+            foreach ($step in $plugin.steps) {
+                $drift.MissingSteps += [PSCustomObject]@{
+                    StepName = $step.name
+                    PluginType = $plugin.typeName
+                    Message = $step.message
+                    Entity = $step.entity
+                    Reason = "Assembly not registered"
+                }
+            }
+        }
+        $drift.HasDrift = $drift.MissingSteps.Count -gt 0
+        return $drift
+    }
+
+    # Get all steps for this assembly from Dataverse
+    $dataverseSteps = Get-ProcessingStepsForAssembly -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -AssemblyId $assembly.pluginassemblyid
+
+    # Build lookup of configured steps
+    $configuredStepLookup = @{}
+    foreach ($plugin in $ConfiguredPlugins) {
+        foreach ($step in $plugin.steps) {
+            $configuredStepLookup[$step.name] = @{
+                Step = $step
+                Plugin = $plugin
+            }
+        }
+    }
+
+    # Check for orphaned steps (in Dataverse but not in config)
+    foreach ($dvStep in $dataverseSteps) {
+        if (-not $configuredStepLookup.ContainsKey($dvStep.name)) {
+            $drift.OrphanedSteps += [PSCustomObject]@{
+                StepName = $dvStep.name
+                StepId = $dvStep.sdkmessageprocessingstepid
+                Stage = $script:PluginStageMap[[int]$dvStep.stage]
+                Mode = $script:PluginModeMap[[int]$dvStep.mode]
+            }
+        }
+    }
+
+    # Check for missing steps and configuration differences
+    foreach ($stepName in $configuredStepLookup.Keys) {
+        $config = $configuredStepLookup[$stepName]
+        $configStep = $config.Step
+        $configPlugin = $config.Plugin
+
+        # Find matching Dataverse step
+        $dvStep = $dataverseSteps | Where-Object { $_.name -eq $stepName } | Select-Object -First 1
+
+        if (-not $dvStep) {
+            # Step is missing from Dataverse
+            $drift.MissingSteps += [PSCustomObject]@{
+                StepName = $stepName
+                PluginType = $configPlugin.typeName
+                Message = $configStep.message
+                Entity = $configStep.entity
+                Reason = "Step not registered"
+            }
+        }
+        else {
+            # Check for configuration differences
+            $differences = @()
+
+            # Compare stage
+            $configStageValue = $script:DataverseStageValues[$configStep.stage]
+            if ($dvStep.stage -ne $configStageValue) {
+                $differences += "Stage: Dataverse=$($script:PluginStageMap[[int]$dvStep.stage]), Config=$($configStep.stage)"
+            }
+
+            # Compare mode
+            $configModeValue = $script:DataverseModeValues[$configStep.mode]
+            if ($dvStep.mode -ne $configModeValue) {
+                $differences += "Mode: Dataverse=$($script:PluginModeMap[[int]$dvStep.mode]), Config=$($configStep.mode)"
+            }
+
+            # Compare execution order (rank)
+            if ($dvStep.rank -ne $configStep.executionOrder) {
+                $differences += "ExecutionOrder: Dataverse=$($dvStep.rank), Config=$($configStep.executionOrder)"
+            }
+
+            # Compare filtering attributes
+            $dvFiltering = if ($dvStep.filteringattributes) { $dvStep.filteringattributes } else { "" }
+            $configFiltering = if ($configStep.filteringAttributes) { $configStep.filteringAttributes } else { "" }
+            if ($dvFiltering -ne $configFiltering) {
+                $differences += "FilteringAttributes: Dataverse='$dvFiltering', Config='$configFiltering'"
+            }
+
+            if ($differences.Count -gt 0) {
+                $drift.ModifiedSteps += [PSCustomObject]@{
+                    StepName = $stepName
+                    StepId = $dvStep.sdkmessageprocessingstepid
+                    Differences = $differences
+                }
+            }
+
+            # Check images for this step
+            $dvImages = Get-StepImages -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -StepId $dvStep.sdkmessageprocessingstepid
+
+            # Build lookup of configured images
+            $configuredImageLookup = @{}
+            foreach ($image in $configStep.images) {
+                $configuredImageLookup[$image.name] = $image
+            }
+
+            # Check for orphaned images
+            foreach ($dvImage in $dvImages) {
+                if (-not $configuredImageLookup.ContainsKey($dvImage.name)) {
+                    $drift.OrphanedImages += [PSCustomObject]@{
+                        ImageName = $dvImage.name
+                        StepName = $stepName
+                        ImageId = $dvImage.sdkmessageprocessingstepimageid
+                        ImageType = $script:PluginImageTypeMap[[int]$dvImage.imagetype]
+                    }
+                }
+            }
+
+            # Check for missing images and differences
+            foreach ($imageName in $configuredImageLookup.Keys) {
+                $configImage = $configuredImageLookup[$imageName]
+                $dvImage = $dvImages | Where-Object { $_.name -eq $imageName } | Select-Object -First 1
+
+                if (-not $dvImage) {
+                    $drift.MissingImages += [PSCustomObject]@{
+                        ImageName = $imageName
+                        StepName = $stepName
+                        ImageType = $configImage.imageType
+                        Attributes = $configImage.attributes
+                    }
+                }
+                else {
+                    # Check for image configuration differences
+                    $imageDiffs = @()
+
+                    $configImageTypeValue = $script:DataverseImageTypeValues[$configImage.imageType]
+                    if ($dvImage.imagetype -ne $configImageTypeValue) {
+                        $imageDiffs += "ImageType: Dataverse=$($script:PluginImageTypeMap[[int]$dvImage.imagetype]), Config=$($configImage.imageType)"
+                    }
+
+                    $dvAttrs = if ($dvImage.attributes) { $dvImage.attributes } else { "" }
+                    $configAttrs = if ($configImage.attributes) { $configImage.attributes } else { "" }
+                    if ($dvAttrs -ne $configAttrs) {
+                        $imageDiffs += "Attributes: Dataverse='$dvAttrs', Config='$configAttrs'"
+                    }
+
+                    if ($imageDiffs.Count -gt 0) {
+                        $drift.ModifiedImages += [PSCustomObject]@{
+                            ImageName = $imageName
+                            StepName = $stepName
+                            ImageId = $dvImage.sdkmessageprocessingstepimageid
+                            Differences = $imageDiffs
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    # Set overall drift flag
+    $drift.HasDrift = (
+        $drift.OrphanedSteps.Count -gt 0 -or
+        $drift.MissingSteps.Count -gt 0 -or
+        $drift.ModifiedSteps.Count -gt 0 -or
+        $drift.OrphanedImages.Count -gt 0 -or
+        $drift.MissingImages.Count -gt 0 -or
+        $drift.ModifiedImages.Count -gt 0
+    )
+
+    return $drift
+}
+
+function Write-DriftReport {
+    <#
+    .SYNOPSIS
+        Outputs a formatted drift detection report.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$Drift
+    )
+
+    Write-PluginLog ""
+    Write-PluginLog ("=" * 60)
+    Write-PluginLog "Drift Report: $($Drift.AssemblyName)"
+    Write-PluginLog ("=" * 60)
+
+    if (-not $Drift.HasDrift) {
+        Write-PluginSuccess "No drift detected - configuration matches Dataverse"
+        return
+    }
+
+    # Orphaned steps
+    if ($Drift.OrphanedSteps.Count -gt 0) {
+        Write-PluginLog ""
+        Write-PluginWarning "ORPHANED STEPS ($($Drift.OrphanedSteps.Count)) - In Dataverse but not in config:"
+        foreach ($step in $Drift.OrphanedSteps) {
+            Write-PluginLog "  - $($step.StepName)"
+            Write-PluginLog "    Stage: $($step.Stage), Mode: $($step.Mode)"
+        }
+    }
+
+    # Missing steps
+    if ($Drift.MissingSteps.Count -gt 0) {
+        Write-PluginLog ""
+        Write-PluginWarning "MISSING STEPS ($($Drift.MissingSteps.Count)) - In config but not in Dataverse:"
+        foreach ($step in $Drift.MissingSteps) {
+            Write-PluginLog "  - $($step.StepName)"
+            Write-PluginLog "    Plugin: $($step.PluginType)"
+            Write-PluginLog "    $($step.Message) on $($step.Entity)"
+        }
+    }
+
+    # Modified steps
+    if ($Drift.ModifiedSteps.Count -gt 0) {
+        Write-PluginLog ""
+        Write-PluginWarning "MODIFIED STEPS ($($Drift.ModifiedSteps.Count)) - Configuration differs:"
+        foreach ($step in $Drift.ModifiedSteps) {
+            Write-PluginLog "  - $($step.StepName)"
+            foreach ($diff in $step.Differences) {
+                Write-PluginLog "    $diff"
+            }
+        }
+    }
+
+    # Orphaned images
+    if ($Drift.OrphanedImages.Count -gt 0) {
+        Write-PluginLog ""
+        Write-PluginWarning "ORPHANED IMAGES ($($Drift.OrphanedImages.Count)) - In Dataverse but not in config:"
+        foreach ($image in $Drift.OrphanedImages) {
+            Write-PluginLog "  - $($image.ImageName) on step: $($image.StepName)"
+            Write-PluginLog "    Type: $($image.ImageType)"
+        }
+    }
+
+    # Missing images
+    if ($Drift.MissingImages.Count -gt 0) {
+        Write-PluginLog ""
+        Write-PluginWarning "MISSING IMAGES ($($Drift.MissingImages.Count)) - In config but not in Dataverse:"
+        foreach ($image in $Drift.MissingImages) {
+            Write-PluginLog "  - $($image.ImageName) on step: $($image.StepName)"
+            Write-PluginLog "    Type: $($image.ImageType), Attributes: $($image.Attributes)"
+        }
+    }
+
+    # Modified images
+    if ($Drift.ModifiedImages.Count -gt 0) {
+        Write-PluginLog ""
+        Write-PluginWarning "MODIFIED IMAGES ($($Drift.ModifiedImages.Count)) - Configuration differs:"
+        foreach ($image in $Drift.ModifiedImages) {
+            Write-PluginLog "  - $($image.ImageName) on step: $($image.StepName)"
+            foreach ($diff in $image.Differences) {
+                Write-PluginLog "    $diff"
+            }
+        }
+    }
+
+    # Summary
+    Write-PluginLog ""
+    $totalDrift = $Drift.OrphanedSteps.Count + $Drift.MissingSteps.Count + $Drift.ModifiedSteps.Count +
+                  $Drift.OrphanedImages.Count + $Drift.MissingImages.Count + $Drift.ModifiedImages.Count
+    Write-PluginWarning "Total drift items: $totalDrift"
+}
+
+# =============================================================================
 # Export Module Members
 # =============================================================================
 
@@ -1418,6 +1733,8 @@ Export-ModuleMember -Function @(
     'Update-StepImage'
     'Remove-StepImage'
     'Deploy-PluginAssembly'
+    'Get-PluginDrift'
+    'Write-DriftReport'
 ) -Variable @(
     'PluginStageMap'
     'PluginModeMap'
