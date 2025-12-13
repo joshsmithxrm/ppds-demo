@@ -32,12 +32,16 @@ Step-by-step documentation explaining **how** to perform common tasks.
 
 ## Reference
 
-Quick-reference material for common tasks.
+Quick-reference material for specifications, patterns, and standards.
 
 | Document | Description |
 |----------|-------------|
 | [PAC_CLI_REFERENCE.md](reference/PAC_CLI_REFERENCE.md) | Common PAC CLI commands and usage |
-| [PLUGIN_COMPONENTS_REFERENCE.md](reference/PLUGIN_COMPONENTS_REFERENCE.md) | Plugin Assemblies vs Plugin Packages - structures and CI/CD handling |
+| [PLUGIN_COMPONENTS_REFERENCE.md](reference/PLUGIN_COMPONENTS_REFERENCE.md) | Plugin Assemblies vs Plugin Packages |
+| [SOLUTION_STRUCTURE_REFERENCE.md](reference/SOLUTION_STRUCTURE_REFERENCE.md) | Solution folder structure and packaging |
+| [WEBRESOURCE_PATTERNS.md](reference/WEBRESOURCE_PATTERNS.md) | JavaScript/TypeScript web resource patterns |
+| [TESTING_PATTERNS.md](reference/TESTING_PATTERNS.md) | Plugin and workflow unit testing patterns |
+| [DOCUMENTATION_STANDARDS.md](reference/DOCUMENTATION_STANDARDS.md) | Documentation file naming and structure |
 
 ---
 
