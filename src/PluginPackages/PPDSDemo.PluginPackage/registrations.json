@@ -33,7 +33,7 @@
           ]
         }
       ],
-      "packagePath": "./src/PluginPackages/PPDSDemo.PluginPackage/bin/Release/PPDSDemo.PluginPackage.1.0.0.nupkg"
+      "packagePath": "./src/PluginPackages/PPDSDemo.PluginPackage/bin/Release/ppds_PPDSDemo.PluginPackage.1.0.0.nupkg"
     }
   ]
 }

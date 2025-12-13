@@ -17,7 +17,8 @@
     https://docs.microsoft.com/en-us/nuget/reference/msbuild-targets
   -->
   <PropertyGroup>
-    <PackageId>PPDSDemo.PluginPackage</PackageId>
+    <!-- PackageId MUST include publisher prefix for Dataverse plugin packages -->
+    <PackageId>ppds_PPDSDemo.PluginPackage</PackageId>
     <Version>$(FileVersion)</Version>
     <Authors>Power Platform Developer Suite Demo</Authors>
     <Company>Power Platform Developer Suite Demo</Company>

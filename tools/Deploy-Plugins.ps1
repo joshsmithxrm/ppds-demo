@@ -300,6 +300,7 @@ try {
         }
 
         # Look up solution if specified
+        $publisherPrefix = $null
         if ($solutionUniqueName -and -not $isWhatIf) {
             Write-PluginLog "Looking up solution: $solutionUniqueName"
             $solution = Get-Solution -ApiUrl $apiUrl -AuthHeaders $authHeaders -UniqueName $solutionUniqueName
@@ -308,7 +309,8 @@ try {
                 Write-PluginLog "Ensure the solution exists in the target environment"
                 continue
             }
-            Write-PluginSuccess "Solution found: $($solution.friendlyname) (v$($solution.version))"
+            $publisherPrefix = $solution.publisherprefix
+            Write-PluginSuccess "Solution found: $($solution.friendlyname) (v$($solution.version), prefix: $publisherPrefix)"
         }
         elseif ($solutionUniqueName -and $isWhatIf) {
             Write-PluginLog "[WhatIf] Would use solution: $solutionUniqueName"
@@ -328,7 +330,7 @@ try {
                 continue
             }
 
-            $deploySuccess = Deploy-PluginAssembly -ApiUrl $apiUrl -AuthHeaders $authHeaders -Path $deployPath -AssemblyName $asmReg.name -Type $asmReg.type -WhatIf:$isWhatIf
+            $deploySuccess = Deploy-PluginAssembly -ApiUrl $apiUrl -AuthHeaders $authHeaders -Path $deployPath -AssemblyName $asmReg.name -Type $asmReg.type -SolutionUniqueName $solutionUniqueName -PublisherPrefix $publisherPrefix -WhatIf:$isWhatIf
             if (-not $deploySuccess -and -not $isWhatIf) {
                 Write-PluginError "Failed to deploy assembly, skipping step registration"
                 continue

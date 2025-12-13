@@ -691,7 +691,7 @@ function Get-PluginAssembly {
 function Get-PluginPackage {
     <#
     .SYNOPSIS
-        Gets a plugin package record by name (for NuGet-based plugins).
+        Gets a plugin package record by name or uniquename (for NuGet-based plugins).
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -701,12 +701,24 @@ function Get-PluginPackage {
         [hashtable]$AuthHeaders,
 
         [Parameter(Mandatory = $true)]
-        [string]$Name
+        [string]$Name,
+
+        [Parameter()]
+        [string]$UniqueName
     )
 
-    $filter = "`$filter=name eq '$Name'"
-    $select = "`$select=pluginpackageid,name,version"
+    $select = "`$select=pluginpackageid,name,uniquename,version"
     try {
+        # Try by uniquename first if provided (more specific)
+        if ($UniqueName) {
+            $filter = "`$filter=uniquename eq '$UniqueName'"
+            $result = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "pluginpackages?$filter&$select" -Method GET
+            $package = $result.value | Select-Object -First 1
+            if ($package) { return $package }
+        }
+
+        # Fall back to name search
+        $filter = "`$filter=name eq '$Name'"
         $result = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "pluginpackages?$filter&$select" -Method GET
         return $result.value | Select-Object -First 1
     }
@@ -871,7 +883,7 @@ function Get-StepImages {
 function Get-Solution {
     <#
     .SYNOPSIS
-        Gets a solution by unique name.
+        Gets a solution by unique name, including publisher prefix.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -886,9 +898,17 @@ function Get-Solution {
 
     $filter = "`$filter=uniquename eq '$UniqueName'"
     $select = "`$select=solutionid,uniquename,friendlyname,version"
+    $expand = "`$expand=publisherid(`$select=customizationprefix,uniquename)"
     try {
-        $result = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "solutions?$filter&$select" -Method GET
-        return $result.value | Select-Object -First 1
+        $result = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "solutions?$filter&$select&$expand" -Method GET
+        $solution = $result.value | Select-Object -First 1
+
+        # Add publisher prefix as a top-level property for easy access
+        if ($solution -and $solution.publisherid) {
+            $solution | Add-Member -MemberType NoteProperty -Name "publisherprefix" -Value $solution.publisherid.customizationprefix -Force
+        }
+
+        return $solution
     }
     catch {
         Write-PluginDebug "Could not query solution: $($_.Exception.Message)"
@@ -1198,6 +1218,12 @@ function Deploy-PluginAssembly {
         [string]$Type,
 
         [Parameter()]
+        [string]$SolutionUniqueName,
+
+        [Parameter()]
+        [string]$PublisherPrefix,
+
+        [Parameter()]
         [switch]$WhatIf
     )
 
@@ -1208,8 +1234,15 @@ function Deploy-PluginAssembly {
 
     # Handle NuGet packages differently from assemblies
     if ($Type -eq "Nuget") {
+        # Build the uniquename with publisher prefix (if provided)
+        $packageUniqueName = if ($PublisherPrefix) {
+            "${PublisherPrefix}_$AssemblyName"
+        } else {
+            $AssemblyName
+        }
+
         # Check if plugin package already exists
-        $existingPackage = Get-PluginPackage -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Name $AssemblyName
+        $existingPackage = Get-PluginPackage -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Name $AssemblyName -UniqueName $packageUniqueName
 
         if ($existingPackage) {
             # Update existing package using PAC CLI
@@ -1236,8 +1269,13 @@ function Deploy-PluginAssembly {
             # Register new plugin package using Web API
             Write-PluginLog "Registering new plugin package: $AssemblyName"
 
+            if (-not $SolutionUniqueName) {
+                Write-PluginError "Solution is required for registering new plugin packages"
+                return $null
+            }
+
             if ($WhatIf) {
-                Write-PluginLog "[WhatIf] Would register new plugin package via Web API"
+                Write-PluginLog "[WhatIf] Would register new plugin package via Web API to solution '$SolutionUniqueName'"
                 return $null
             }
 
@@ -1245,11 +1283,15 @@ function Deploy-PluginAssembly {
             $bytes = [System.IO.File]::ReadAllBytes($Path)
             $content = [System.Convert]::ToBase64String($bytes)
 
+            # Use the uniquename built earlier (includes publisher prefix)
             $body = @{
                 name = $AssemblyName
+                uniquename = $packageUniqueName
                 content = $content
-                version = "1.0.0"  # Default version, NuGet package has its own versioning
+                version = "1.0.0"
             }
+
+            Write-PluginDebug "Package unique name: $packageUniqueName"
 
             try {
                 $response = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "pluginpackages" -Method POST -Body $body
