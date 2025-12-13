@@ -113,6 +113,33 @@ Repeat Section 3 with these values:
 
 After creation, update `.env.qa` with the environment URL.
 
+### Add Users to New Environments
+
+New environments only grant access to the creator. Team members need to be explicitly added with appropriate security roles:
+
+```bash
+# Add admin users
+pac admin assign-user \
+  --environment <ENV_ID> \
+  --user "admin@tenant.onmicrosoft.com" \
+  --role "System Administrator"
+
+# Add regular users
+pac admin assign-user \
+  --environment <ENV_ID> \
+  --user "user@tenant.onmicrosoft.com" \
+  --role "Basic User"
+```
+
+**Common security roles:**
+| Role | Access Level |
+|------|--------------|
+| System Administrator | Full access to everything |
+| System Customizer | Customize solution, no data access |
+| Basic User | Read/write own records only |
+
+> **Remember:** M365 admin roles (Global Admin, Power Platform Admin) manage environments at the tenant level but don't automatically grant access inside Dataverse. See Troubleshooting section for details.
+
 ---
 
 ## 5. Configure Power Platform CLI Authentication
