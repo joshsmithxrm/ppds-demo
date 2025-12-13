@@ -150,14 +150,20 @@ jobs:
           run-tests: 'false'
 
       - name: Copy plugin assemblies (classic)
+        id: copy-assemblies
         if: inputs.build-plugins == true && steps.build.outputs.build-succeeded == 'true' && steps.build.outputs.classic-assembly-path != ''
         uses: ./.github/actions/copy-plugin-assemblies
         with:
           source-assembly: ${{ steps.build.outputs.classic-assembly-path }}
           solution-folder: solutions/${{ inputs.solution-name }}/src
 
-      # Note: Plugin packages (.nupkg) are deployed differently via pac plugin push
-      # For now, we focus on classic assemblies which are included in the solution
+      - name: Copy plugin packages (modern)
+        id: copy-packages
+        if: inputs.build-plugins == true && steps.build.outputs.build-succeeded == 'true' && steps.build.outputs.plugin-package-path != ''
+        uses: ./.github/actions/copy-plugin-packages
+        with:
+          source-package: ${{ steps.build.outputs.plugin-package-path }}
+          solution-folder: solutions/${{ inputs.solution-name }}/src
 
       # ========================================
       # Deployment Settings Detection
@@ -241,6 +247,26 @@ jobs:
           if [ "${{ inputs.build-plugins }}" = "true" ]; then
             if [ "${{ steps.build.outputs.build-succeeded }}" = "true" ]; then
               echo "| Plugin Build | **Passed** |" >> $GITHUB_STEP_SUMMARY
+
+              # Show classic assembly copy status
+              if [ -n "${{ steps.build.outputs.classic-assembly-path }}" ]; then
+                ASSEMBLY_COUNT="${{ steps.copy-assemblies.outputs.copied-count }}"
+                if [ -n "$ASSEMBLY_COUNT" ] && [ "$ASSEMBLY_COUNT" != "0" ]; then
+                  echo "| Classic Assembly | Copied to $ASSEMBLY_COUNT location(s) |" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "| Classic Assembly | ⚠️ Not copied |" >> $GITHUB_STEP_SUMMARY
+                fi
+              fi
+
+              # Show plugin package copy status
+              if [ -n "${{ steps.build.outputs.plugin-package-path }}" ]; then
+                PACKAGE_COUNT="${{ steps.copy-packages.outputs.copied-count }}"
+                if [ -n "$PACKAGE_COUNT" ] && [ "$PACKAGE_COUNT" != "0" ]; then
+                  echo "| Plugin Package | Copied to $PACKAGE_COUNT location(s) |" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "| Plugin Package | ⚠️ Not copied |" >> $GITHUB_STEP_SUMMARY
+                fi
+              fi
             elif [ "${{ steps.detect-dotnet.outputs.has-solution }}" = "false" ]; then
               echo "| Plugin Build | Skipped (no .sln found) |" >> $GITHUB_STEP_SUMMARY
             else

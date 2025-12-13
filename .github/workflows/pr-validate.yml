@@ -149,39 +149,34 @@ jobs:
       - name: Setup PAC CLI
         uses: ./.github/actions/setup-pac-cli
 
-      # Copy built assemblies if build succeeded
-      - name: Setup .NET SDK (for assembly copy)
+      # Build and copy plugin components if build succeeded
+      - name: Setup .NET SDK
         if: needs.build-code.outputs.build-succeeded == 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.x'
 
-      - name: Build and copy assemblies
+      - name: Build .NET solution
+        id: build-local
         if: needs.build-code.outputs.build-succeeded == 'true'
-        run: |
-          # Rebuild to get assemblies in this job
-          SLN_PATH=$(find . -maxdepth 1 -name "*.sln" | head -1 || echo "")
-          if [ -n "$SLN_PATH" ]; then
-            dotnet build "$SLN_PATH" --configuration Release --verbosity minimal
+        uses: ./.github/actions/build-solution
+        with:
+          configuration: Release
+          run-tests: 'false'
 
-            # Find and copy classic assembly
-            CLASSIC_DLL=$(find src/Plugins -name "*.dll" -path "*bin/Release*" -not -name "Microsoft.*" -not -name "System.*" 2>/dev/null | head -1 || echo "")
-            if [ -n "$CLASSIC_DLL" ]; then
-              echo "Found classic assembly: $CLASSIC_DLL"
+      - name: Copy plugin assemblies (classic)
+        if: needs.build-code.outputs.build-succeeded == 'true' && steps.build-local.outputs.classic-assembly-path != ''
+        uses: ./.github/actions/copy-plugin-assemblies
+        with:
+          source-assembly: ${{ steps.build-local.outputs.classic-assembly-path }}
+          solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
 
-              # Get target filename (remove dots from assembly name)
-              SOURCE_FILE=$(basename "$CLASSIC_DLL")
-              ASSEMBLY_NAME="${SOURCE_FILE%.dll}"
-              TARGET_NAME=$(echo "$ASSEMBLY_NAME" | tr -d '.').dll
-              FOLDER_PATTERN=$(echo "$ASSEMBLY_NAME" | tr -d '.')
-
-              # Copy to all plugin assembly locations
-              for PLUGIN_FOLDER in $(find ${{ env.SOLUTION_BASE_FOLDER }} -type d -name "${FOLDER_PATTERN}-*" 2>/dev/null); do
-                echo "Copying to: $PLUGIN_FOLDER/$TARGET_NAME"
-                cp "$CLASSIC_DLL" "$PLUGIN_FOLDER/$TARGET_NAME"
-              done
-            fi
-          fi
+      - name: Copy plugin packages (modern)
+        if: needs.build-code.outputs.build-succeeded == 'true' && steps.build-local.outputs.plugin-package-path != ''
+        uses: ./.github/actions/copy-plugin-packages
+        with:
+          source-package: ${{ steps.build-local.outputs.plugin-package-path }}
+          solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
 
       - name: Validate managed solution can be packed
         id: pack-managed

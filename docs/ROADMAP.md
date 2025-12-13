@@ -27,6 +27,8 @@ This demo solution showcases Power Platform ALM patterns with **one example of e
 | CI/CD: Dev to QA | Done | export-solution.yml |
 | Branching (develop/main) | Done | Feature branch workflow |
 | CI/CD: QA to Prod | Done | deploy-to-prod.yml |
+| Plugin build integration | Done | Build, copy assemblies & packages to solution |
+| Plugin components reference | Done | docs/reference/PLUGIN_COMPONENTS_REFERENCE.md |
 | Environment setup guide | Done | docs/guides/ENVIRONMENT_SETUP_GUIDE.md |
 | Getting started guide | Pending | Clone, configure, deploy |
 
@@ -70,10 +72,10 @@ This demo solution showcases Power Platform ALM patterns with **one example of e
 
 | Item | Status | Notes |
 |------|--------|-------|
+| PR validation workflow | Done | pr-validate.yml with build & pack validation |
+| Solution Checker integration | Done | Quality gates in PR validation |
 | Security role | Pending | One example role |
 | Business rule | Pending | One simple rule |
-| PR validation workflow | Pending | validate-pr.yml |
-| Solution Checker integration | Pending | Quality gates |
 | Approval gates for Prod | Pending | Manual approval workflow |
 
 ---

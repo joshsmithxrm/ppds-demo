@@ -37,6 +37,7 @@ Quick-reference material for common tasks.
 | Document | Description |
 |----------|-------------|
 | [PAC_CLI_REFERENCE.md](reference/PAC_CLI_REFERENCE.md) | Common PAC CLI commands and usage |
+| [PLUGIN_COMPONENTS_REFERENCE.md](reference/PLUGIN_COMPONENTS_REFERENCE.md) | Plugin Assemblies vs Plugin Packages - structures and CI/CD handling |
 
 ---
 
