@@ -35,7 +35,7 @@ name: 'CI: Export from Dev'
 on:
   # Nightly export at 2 AM UTC (9 PM EST, 8 PM CST, 7 PM MST, 6 PM PST)
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '0 2 * * *'
 
   # Manual trigger
   workflow_dispatch:
