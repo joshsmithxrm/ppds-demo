@@ -1,0 +1,44 @@
+{
+  "EnvironmentVariables": [
+    {
+      "SchemaName": "ppds_ApiEndpoint",
+      "Value": "",
+      "DefaultValue": "https://api.example.com",
+      "Name": {
+        "Default": "API Endpoint",
+        "ByLcid": {
+          "1033": "API Endpoint"
+        }
+      },
+      "TypeId": 100000000,
+      "Description": {
+        "Default": "External API endpoint URL for demo integrations",
+        "ByLcid": {
+          "1033": "External API endpoint URL for demo integrations"
+        }
+      },
+      "IsRequired": false
+    },
+    {
+      "SchemaName": "ppds_EnableFeatureX",
+      "Value": "",
+      "DefaultValue": "false",
+      "Name": {
+        "Default": "Enable Feature X",
+        "ByLcid": {
+          "1033": "Enable Feature X"
+        }
+      },
+      "TypeId": 100000002,
+      "Description": {
+        "Default": "Toggle to enable/disable Feature X functionality",
+        "ByLcid": {
+          "1033": "Toggle to enable/disable Feature X functionality"
+        }
+      },
+      "IsRequired": false
+    }
+  ],
+  "ConnectionReferences": [],
+  "CopilotAgents": []
+}

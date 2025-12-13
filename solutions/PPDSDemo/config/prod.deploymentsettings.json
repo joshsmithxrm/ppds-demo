@@ -1,0 +1,7 @@
+{
+  "EnvironmentVariables": [
+    { "SchemaName": "ppds_ApiEndpoint", "Value": "https://api.ppds-demo.com" },
+    { "SchemaName": "ppds_EnableFeatureX", "Value": "false" }
+  ],
+  "ConnectionReferences": []
+}

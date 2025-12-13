@@ -1,0 +1,307 @@
+# =============================================================================
+# Reusable Workflow: Deploy Solution
+# =============================================================================
+# Reusable workflow for deploying a managed Power Platform solution to any
+# environment. Called by cd-qa.yml and cd-prod.yml.
+#
+# Features:
+#   - Plugin/code build integration (optional)
+#   - Automatic deployment settings detection per environment
+#   - Version comparison (skip if target has same/newer version)
+#   - Smart retry logic for transient failures
+#   - Detailed deployment summary
+#
+# Plugin Build:
+#   When build-plugins is enabled, the workflow will:
+#   1. Build the .NET solution (plugins, workflow activities, custom APIs)
+#   2. Copy compiled assemblies to solution folder
+#   3. Pack and import the solution with fresh binaries
+#
+# Deployment Settings:
+#   Place environment-specific settings at:
+#   solutions/{solution-name}/config/{environment}.deploymentsettings.json
+#
+#   Example: solutions/PPDSDemo/config/qa.deploymentsettings.json
+#
+# Usage:
+#   jobs:
+#     deploy:
+#       uses: ./.github/workflows/_deploy-solution.yml
+#       with:
+#         environment-name: QA
+#         solution-name: PPDSDemo
+#         solution-folder: solutions/PPDSDemo/src
+#         build-plugins: true
+#         ref: develop
+#       secrets: inherit
+#
+# =============================================================================
+
+name: 'Deploy Solution'
+
+on:
+  workflow_call:
+    inputs:
+      environment-name:
+        description: 'GitHub environment name (Dev, QA, Prod)'
+        required: true
+        type: string
+      solution-name:
+        description: 'Solution unique name'
+        required: true
+        type: string
+      solution-folder:
+        description: 'Path to solution source folder (flat structure from packagetype Both)'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to checkout (branch, tag, or SHA)'
+        required: false
+        type: string
+        default: ''
+      build-plugins:
+        description: 'Build .NET plugins before packing solution'
+        required: false
+        type: boolean
+        default: false
+      dotnet-solution-path:
+        description: 'Path to .NET solution file (auto-detected if empty)'
+        required: false
+        type: string
+        default: ''
+      skip-if-same-version:
+        description: 'Skip import if target has same or newer version'
+        required: false
+        type: boolean
+        default: true
+      max-retries:
+        description: 'Maximum retry attempts for transient import failures'
+        required: false
+        type: number
+        default: 3
+      settings-file:
+        description: 'Override path to deployment settings file (auto-detected if empty)'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      deployed:
+        description: 'Whether deployment completed successfully'
+        value: ${{ jobs.deploy.outputs.deployed }}
+      skipped:
+        description: 'Whether deployment was skipped (version match)'
+        value: ${{ jobs.deploy.outputs.skipped }}
+      version:
+        description: 'Version that was deployed'
+        value: ${{ jobs.deploy.outputs.version }}
+      build-succeeded:
+        description: 'Whether plugin build succeeded (if enabled)'
+        value: ${{ jobs.deploy.outputs.build_succeeded }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment-name }}
+
+    outputs:
+      deployed: ${{ steps.import.outputs.imported }}
+      skipped: ${{ steps.import.outputs.skipped }}
+      version: ${{ steps.import.outputs.import-version }}
+      build_succeeded: ${{ steps.build.outputs.build-succeeded }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      # ========================================
+      # Plugin Build (Optional)
+      # ========================================
+
+      - name: Detect .NET solution
+        id: detect-dotnet
+        if: inputs.build-plugins == true
+        run: |
+          # Use provided path or auto-detect
+          if [ -n "${{ inputs.dotnet-solution-path }}" ]; then
+            SLN_PATH="${{ inputs.dotnet-solution-path }}"
+          else
+            # Auto-detect solution file in root
+            SLN_PATH=$(find . -maxdepth 1 -name "*.sln" | head -1 || echo "")
+          fi
+
+          if [ -n "$SLN_PATH" ] && [ -f "$SLN_PATH" ]; then
+            echo "Found .NET solution: $SLN_PATH"
+            echo "solution-path=$SLN_PATH" >> $GITHUB_OUTPUT
+            echo "has-solution=true" >> $GITHUB_OUTPUT
+          else
+            echo "No .NET solution found"
+            echo "has-solution=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build .NET solution
+        id: build
+        if: inputs.build-plugins == true && steps.detect-dotnet.outputs.has-solution == 'true'
+        uses: ./.github/actions/build-solution
+        with:
+          solution-path: ${{ steps.detect-dotnet.outputs.solution-path }}
+          configuration: Release
+          run-tests: 'false'
+
+      - name: Copy plugin assemblies (classic)
+        id: copy-assemblies
+        if: inputs.build-plugins == true && steps.build.outputs.build-succeeded == 'true' && steps.build.outputs.classic-assembly-path != ''
+        uses: ./.github/actions/copy-plugin-assemblies
+        with:
+          source-assembly: ${{ steps.build.outputs.classic-assembly-path }}
+          solution-folder: solutions/${{ inputs.solution-name }}/src
+
+      - name: Copy plugin packages (modern)
+        id: copy-packages
+        if: inputs.build-plugins == true && steps.build.outputs.build-succeeded == 'true' && steps.build.outputs.plugin-package-path != ''
+        uses: ./.github/actions/copy-plugin-packages
+        with:
+          source-package: ${{ steps.build.outputs.plugin-package-path }}
+          solution-folder: solutions/${{ inputs.solution-name }}/src
+
+      # ========================================
+      # Deployment Settings Detection
+      # ========================================
+
+      - name: Detect deployment settings
+        id: settings
+        run: |
+          # Convert environment name to lowercase for file lookup
+          ENV_LOWER=$(echo "${{ inputs.environment-name }}" | tr '[:upper:]' '[:lower:]')
+
+          # Check for override or auto-detect
+          if [ -n "${{ inputs.settings-file }}" ]; then
+            SETTINGS_PATH="${{ inputs.settings-file }}"
+            echo "Using override settings file: $SETTINGS_PATH"
+          else
+            # Auto-detect based on solution name and environment
+            SOLUTION_BASE="solutions/${{ inputs.solution-name }}"
+            SETTINGS_PATH="${SOLUTION_BASE}/config/${ENV_LOWER}.deploymentsettings.json"
+            echo "Auto-detecting settings at: $SETTINGS_PATH"
+          fi
+
+          if [ -f "$SETTINGS_PATH" ]; then
+            echo "settings-file=$SETTINGS_PATH" >> $GITHUB_OUTPUT
+            echo "has-settings=true" >> $GITHUB_OUTPUT
+            echo "Found deployment settings file"
+          else
+            echo "settings-file=" >> $GITHUB_OUTPUT
+            echo "has-settings=false" >> $GITHUB_OUTPUT
+            echo "No deployment settings file found (optional)"
+          fi
+
+      # ========================================
+      # Solution Deployment
+      # ========================================
+
+      - name: Setup PAC CLI
+        uses: ./.github/actions/setup-pac-cli
+
+      - name: Authenticate to ${{ inputs.environment-name }} environment
+        uses: ./.github/actions/pac-auth
+        with:
+          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
+          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
+          client-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
+          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
+
+      - name: Pack solution (Managed)
+        id: pack
+        uses: ./.github/actions/pack-solution
+        with:
+          solution-folder: ${{ inputs.solution-folder }}
+          solution-name: ${{ inputs.solution-name }}
+          package-type: Managed
+
+      - name: Import solution
+        id: import
+        uses: ./.github/actions/import-solution
+        with:
+          solution-path: ${{ steps.pack.outputs.solution-path }}
+          solution-name: ${{ inputs.solution-name }}
+          skip-if-same-version: ${{ inputs.skip-if-same-version }}
+          max-retries: ${{ inputs.max-retries }}
+          settings-file: ${{ steps.settings.outputs.settings-file }}
+
+      # ========================================
+      # Summary
+      # ========================================
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Solution | ${{ inputs.solution-name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | ${{ inputs.environment-name }} (\`${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}\`) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Type | Managed |" >> $GITHUB_STEP_SUMMARY
+
+          # Show build info if enabled
+          if [ "${{ inputs.build-plugins }}" = "true" ]; then
+            if [ "${{ steps.build.outputs.build-succeeded }}" = "true" ]; then
+              echo "| Plugin Build | **Passed** |" >> $GITHUB_STEP_SUMMARY
+
+              # Show classic assembly copy status
+              if [ -n "${{ steps.build.outputs.classic-assembly-path }}" ]; then
+                ASSEMBLY_COUNT="${{ steps.copy-assemblies.outputs.copied-count }}"
+                if [ -n "$ASSEMBLY_COUNT" ] && [ "$ASSEMBLY_COUNT" != "0" ]; then
+                  echo "| Classic Assembly | Copied to $ASSEMBLY_COUNT location(s) |" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "| Classic Assembly | ⚠️ Not copied |" >> $GITHUB_STEP_SUMMARY
+                fi
+              fi
+
+              # Show plugin package copy status
+              if [ -n "${{ steps.build.outputs.plugin-package-path }}" ]; then
+                PACKAGE_COUNT="${{ steps.copy-packages.outputs.copied-count }}"
+                if [ -n "$PACKAGE_COUNT" ] && [ "$PACKAGE_COUNT" != "0" ]; then
+                  echo "| Plugin Package | Copied to $PACKAGE_COUNT location(s) |" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "| Plugin Package | ⚠️ Not copied |" >> $GITHUB_STEP_SUMMARY
+                fi
+              fi
+            elif [ "${{ steps.detect-dotnet.outputs.has-solution }}" = "false" ]; then
+              echo "| Plugin Build | Skipped (no .sln found) |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Plugin Build | **Failed** |" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          # Show version info
+          if [ -n "${{ steps.import.outputs.import-version }}" ]; then
+            echo "| Import Version | ${{ steps.import.outputs.import-version }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -n "${{ steps.import.outputs.target-version }}" ]; then
+            echo "| Target Version | ${{ steps.import.outputs.target-version }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Show status
+          if [ "${{ steps.import.outputs.skipped }}" = "true" ]; then
+            echo "| Status | **Skipped** (version match) |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.import.outputs.imported }}" = "true" ]; then
+            echo "| Status | **Deployed** |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Status | **Failed** |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Show retry count if any
+          if [ -n "${{ steps.import.outputs.retry-count }}" ] && [ "${{ steps.import.outputs.retry-count }}" != "0" ]; then
+            echo "| Retry Attempts | ${{ steps.import.outputs.retry-count }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Show settings file if used
+          if [ "${{ steps.settings.outputs.has-settings }}" = "true" ]; then
+            echo "| Settings File | \`${{ steps.settings.outputs.settings-file }}\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "| Branch/Ref | ${{ inputs.ref || github.ref }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Actor | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY

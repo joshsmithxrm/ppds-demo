@@ -1,0 +1,409 @@
+# =============================================================================
+# PR: Validate Solution
+# =============================================================================
+# Validates that the Power Platform solution can be packed successfully,
+# builds and tests .NET code, and optionally runs the Solution Checker.
+#
+# Triggers:
+#   - Pull requests to develop or main that modify solution or code files
+#   - Manual workflow dispatch
+#
+# Validation checks:
+#   - .NET code builds successfully (plugins, workflow activities, etc.)
+#   - Unit tests pass (if present)
+#   - Managed solution can be packed from source
+#   - Unmanaged solution can be packed from source
+#   - (Optional) Solution Checker quality analysis
+#
+# This catches code, structural, and quality issues before they reach QA/Production.
+#
+# =============================================================================
+
+name: 'PR: Validate Solution'
+
+on:
+  # Validate PRs that modify solution or code files
+  pull_request:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'solutions/PPDSDemo/src/**'
+      - 'src/**'
+      - '*.sln'
+      - '**/*.csproj'
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      solution_name:
+        description: 'Solution unique name'
+        required: true
+        default: 'PPDSDemo'
+      build_code:
+        description: 'Build .NET code (plugins, etc.)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      run_tests:
+        description: 'Run unit tests'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      run_solution_checker:
+        description: 'Run Solution Checker analysis'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      checker_fail_level:
+        description: 'Solution Checker failure threshold'
+        required: false
+        default: 'High'
+        type: choice
+        options:
+          - 'Critical'
+          - 'High'
+          - 'Medium'
+          - 'Low'
+
+env:
+  SOLUTION_NAME: ${{ github.event.inputs.solution_name || 'PPDSDemo' }}
+  SOLUTION_BASE_FOLDER: solutions/PPDSDemo/src
+  SOLUTION_EXPORT_FOLDER: solutions/exports
+  BUILD_CODE: ${{ github.event.inputs.build_code || 'true' }}
+  RUN_TESTS: ${{ github.event.inputs.run_tests || 'true' }}
+  RUN_CHECKER: ${{ github.event.inputs.run_solution_checker || 'true' }}
+  CHECKER_LEVEL: ${{ github.event.inputs.checker_fail_level || 'High' }}
+
+jobs:
+  # ============================================
+  # Job 0: Dependency Review (Security)
+  # ============================================
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          # Fail on high and critical vulnerabilities
+          fail-on-severity: high
+          # Also check for license issues
+          deny-licenses: GPL-3.0, AGPL-3.0
+
+  # ============================================
+  # Job 1: Build and Test .NET Code
+  # ============================================
+  build-code:
+    name: Build & Test Code
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.build_code != 'false' }}
+
+    outputs:
+      build-succeeded: ${{ steps.build.outputs.build-succeeded }}
+      test-succeeded: ${{ steps.build.outputs.test-succeeded }}
+      classic-assembly: ${{ steps.build.outputs.classic-assembly-path }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect .NET solution
+        id: detect
+        run: |
+          SLN_PATH=$(find . -maxdepth 1 -name "*.sln" | head -1 || echo "")
+          if [ -n "$SLN_PATH" ] && [ -f "$SLN_PATH" ]; then
+            echo "Found .NET solution: $SLN_PATH"
+            echo "has-solution=true" >> $GITHUB_OUTPUT
+            echo "solution-path=$SLN_PATH" >> $GITHUB_OUTPUT
+          else
+            echo "No .NET solution found"
+            echo "has-solution=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build .NET solution
+        id: build
+        if: steps.detect.outputs.has-solution == 'true'
+        uses: ./.github/actions/build-solution
+        with:
+          solution-path: ${{ steps.detect.outputs.solution-path }}
+          configuration: Release
+          run-tests: ${{ env.RUN_TESTS }}
+
+      - name: Skip notification
+        if: steps.detect.outputs.has-solution != 'true'
+        run: |
+          echo "::notice::No .NET solution found - skipping code build"
+
+  # ============================================
+  # Job 2: Validate Solution Structure
+  # ============================================
+  validate-solution:
+    name: Validate Solution
+    runs-on: ubuntu-latest
+    needs: [build-code]
+    if: always()
+
+    outputs:
+      managed-path: ${{ steps.pack-managed.outputs.solution-path }}
+      checker-passed: ${{ steps.check.outputs.passed }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PAC CLI
+        uses: ./.github/actions/setup-pac-cli
+
+      # Build and copy plugin components if build succeeded
+      - name: Setup .NET SDK
+        if: needs.build-code.outputs.build-succeeded == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Build .NET solution
+        id: build-local
+        if: needs.build-code.outputs.build-succeeded == 'true'
+        uses: ./.github/actions/build-solution
+        with:
+          configuration: Release
+          run-tests: 'false'
+
+      - name: Copy plugin assemblies (classic)
+        if: needs.build-code.outputs.build-succeeded == 'true' && steps.build-local.outputs.classic-assembly-path != ''
+        uses: ./.github/actions/copy-plugin-assemblies
+        with:
+          source-assembly: ${{ steps.build-local.outputs.classic-assembly-path }}
+          solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
+
+      - name: Copy plugin packages (modern)
+        if: needs.build-code.outputs.build-succeeded == 'true' && steps.build-local.outputs.plugin-package-path != ''
+        uses: ./.github/actions/copy-plugin-packages
+        with:
+          source-package: ${{ steps.build-local.outputs.plugin-package-path }}
+          solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
+
+      - name: Validate managed solution can be packed
+        id: pack-managed
+        uses: ./.github/actions/pack-solution
+        with:
+          solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
+          solution-name: ${{ env.SOLUTION_NAME }}
+          output-folder: ${{ env.SOLUTION_EXPORT_FOLDER }}
+          package-type: Managed
+
+      - name: Validate unmanaged solution can be packed
+        id: pack-unmanaged
+        uses: ./.github/actions/pack-solution
+        with:
+          solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
+          solution-name: ${{ env.SOLUTION_NAME }}
+          output-folder: ${{ env.SOLUTION_EXPORT_FOLDER }}
+          package-type: Unmanaged
+
+      - name: Verify packed solutions
+        id: verify
+        run: |
+          echo "Checking packed solutions..."
+          ls -la ${{ env.SOLUTION_EXPORT_FOLDER }}/
+
+          MANAGED_PATH="${{ steps.pack-managed.outputs.solution-path }}"
+          UNMANAGED_PATH="${{ steps.pack-unmanaged.outputs.solution-path }}"
+
+          if [ ! -f "$MANAGED_PATH" ]; then
+            echo "::error::Managed solution pack failed - file not created: $MANAGED_PATH"
+            exit 1
+          fi
+
+          if [ ! -f "$UNMANAGED_PATH" ]; then
+            echo "::error::Unmanaged solution pack failed - file not created: $UNMANAGED_PATH"
+            exit 1
+          fi
+
+          MANAGED_SIZE=$(stat -c%s "$MANAGED_PATH" 2>/dev/null || stat -f%z "$MANAGED_PATH")
+          UNMANAGED_SIZE=$(stat -c%s "$UNMANAGED_PATH" 2>/dev/null || stat -f%z "$UNMANAGED_PATH")
+
+          echo "Managed solution size: $MANAGED_SIZE bytes"
+          echo "Unmanaged solution size: $UNMANAGED_SIZE bytes"
+          echo ""
+          echo "Both managed and unmanaged solutions packed successfully!"
+
+          # Output for summary
+          echo "managed_size=$MANAGED_SIZE" >> $GITHUB_OUTPUT
+          echo "unmanaged_size=$UNMANAGED_SIZE" >> $GITHUB_OUTPUT
+
+      # Authenticate for Solution Checker (requires secrets)
+      - name: Authenticate for Solution Checker
+        id: auth
+        if: env.RUN_CHECKER == 'true' && vars.DATAVERSE_ENV_URL != ''
+        uses: ./.github/actions/pac-auth
+        with:
+          environment-url: ${{ vars.DATAVERSE_ENV_URL }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        continue-on-error: true
+
+      - name: Run Solution Checker
+        id: check
+        if: env.RUN_CHECKER == 'true' && steps.auth.outcome == 'success'
+        uses: ./.github/actions/check-solution
+        with:
+          solution-path: ${{ steps.pack-managed.outputs.solution-path }}
+          fail-on-level: ${{ env.CHECKER_LEVEL }}
+          geography: unitedstates
+        continue-on-error: true
+
+      - name: Skip Solution Checker notice
+        if: env.RUN_CHECKER == 'true' && steps.auth.outcome != 'success'
+        run: |
+          echo "::notice::Solution Checker skipped - authentication not available (secrets not configured or forked PR)"
+
+      - name: Validation summary
+        run: |
+          echo "## PR Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Code Build Section
+          echo "### Code Build & Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          BUILD_STATUS="${{ needs.build-code.outputs.build-succeeded }}"
+          TEST_STATUS="${{ needs.build-code.outputs.test-succeeded }}"
+
+          if [ "${{ env.BUILD_CODE }}" = "false" ]; then
+            echo "| .NET Build | Skipped |" >> $GITHUB_STEP_SUMMARY
+          elif [ "$BUILD_STATUS" = "true" ]; then
+            echo "| .NET Build | **Passed** |" >> $GITHUB_STEP_SUMMARY
+          elif [ -z "$BUILD_STATUS" ]; then
+            echo "| .NET Build | Skipped (no .sln) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| .NET Build | **Failed** |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ env.RUN_TESTS }}" = "false" ]; then
+            echo "| Unit Tests | Skipped |" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TEST_STATUS" = "true" ]; then
+            echo "| Unit Tests | **Passed** |" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TEST_STATUS" = "skipped" ]; then
+            echo "| Unit Tests | Skipped (no tests) |" >> $GITHUB_STEP_SUMMARY
+          elif [ -z "$TEST_STATUS" ]; then
+            echo "| Unit Tests | N/A |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Unit Tests | **Failed** |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Solution Packing Section
+          echo "### Solution Packing" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Pack Managed | **Passed** | ${{ steps.verify.outputs.managed_size }} bytes |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pack Unmanaged | **Passed** | ${{ steps.verify.outputs.unmanaged_size }} bytes |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Solution Checker Section
+          echo "### Solution Checker" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ env.RUN_CHECKER }}" != "true" ]; then
+            echo "_Solution Checker was disabled_" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.auth.outcome }}" != "success" ]; then
+            echo "_Solution Checker skipped - authentication not available_" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "To enable Solution Checker, configure these repository secrets:" >> $GITHUB_STEP_SUMMARY
+            echo "- \`AZURE_TENANT_ID\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`AZURE_CLIENT_ID\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`AZURE_CLIENT_SECRET\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "And this repository variable:" >> $GITHUB_STEP_SUMMARY
+            echo "- \`DATAVERSE_ENV_URL\`" >> $GITHUB_STEP_SUMMARY
+          else
+            CHECKER_PASSED="${{ steps.check.outputs.passed }}"
+            if [ "$CHECKER_PASSED" = "true" ]; then
+              echo "**Status: PASSED** (threshold: ${{ env.CHECKER_LEVEL }})" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "**Status: FAILED** (threshold: ${{ env.CHECKER_LEVEL }})" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | ${{ steps.check.outputs.critical-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| High | ${{ steps.check.outputs.high-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium | ${{ steps.check.outputs.medium-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Low | ${{ steps.check.outputs.low-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Informational | ${{ steps.check.outputs.informational-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "Solution: **${{ env.SOLUTION_NAME }}**" >> $GITHUB_STEP_SUMMARY
+          echo "PR: #${{ github.event.pull_request.number || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if Solution Checker failed
+        if: env.RUN_CHECKER == 'true' && steps.auth.outcome == 'success' && steps.check.outputs.passed == 'false'
+        run: |
+          echo "::error::Solution Checker found issues exceeding the ${{ env.CHECKER_LEVEL }} threshold"
+          echo "Please review the Solution Checker results above and address the issues."
+          exit 1
+
+      - name: Clean up
+        if: always()
+        run: rm -rf ${{ env.SOLUTION_EXPORT_FOLDER }}
+
+  # ============================================
+  # Job 3: Final Status Check
+  # ============================================
+  status-check:
+    name: Validation Status
+    runs-on: ubuntu-latest
+    needs: [dependency-review, build-code, validate-solution]
+    if: always()
+
+    steps:
+      - name: Check overall status
+        run: |
+          DEPENDENCY_RESULT="${{ needs.dependency-review.result }}"
+          BUILD_RESULT="${{ needs.build-code.result }}"
+          VALIDATE_RESULT="${{ needs.validate-solution.result }}"
+
+          echo "Dependency review result: $DEPENDENCY_RESULT"
+          echo "Build job result: $BUILD_RESULT"
+          echo "Validate job result: $VALIDATE_RESULT"
+
+          if [ "$DEPENDENCY_RESULT" = "failure" ]; then
+            echo "::error::Dependency review failed - vulnerable or unlicensed dependencies detected"
+            exit 1
+          fi
+
+          if [ "$BUILD_RESULT" = "failure" ]; then
+            echo "::error::Code build failed"
+            exit 1
+          fi
+
+          if [ "$VALIDATE_RESULT" = "failure" ]; then
+            echo "::error::Solution validation failed"
+            exit 1
+          fi
+
+          echo "All validation checks passed!"

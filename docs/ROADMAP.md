@@ -1,184 +1,133 @@
-# Power Platform Developer Suite Demo Solution - Roadmap
+# Roadmap
 
-This document tracks what needs to be built for this demo solution. Check items off as they're completed.
-
----
-
-## Phase 1: Project Foundation
-
-### Repository Setup
-- [x] Create CLAUDE.md with coding standards and patterns
-- [x] Create README.md with project overview
-- [x] Set up .claude/settings.local.json for permissions
-- [x] Create docs folder structure
-- [x] Document PAC CLI installation and usage
-- [ ] Create .editorconfig for consistent formatting
-- [ ] Set up solution-level .gitignore additions (if needed)
-
-### Documentation
-- [ ] Create docs/development/plugins.md - Plugin development patterns
-- [ ] Create docs/development/web-resources.md - Web resource patterns
-- [ ] Create docs/development/custom-apis.md - Custom API patterns
-- [ ] Create docs/development/pcf.md - PCF control patterns
-- [ ] Create docs/development/testing.md - Testing strategies
-- [x] Create docs/cicd/solution-export-pipeline.md - CI/CD pipeline documentation
+This demo solution showcases Power Platform ALM patterns with **one example of each major component type**.
 
 ---
 
-## Phase 2: C# Projects Setup
+## Guiding Principles
 
-### Plugin Assembly (Classic)
-- [x] Create src/Plugins/PPDSDemo.Plugins/PPDSDemo.Plugins.csproj (.NET Framework 4.6.2)
-- [x] Add NuGet references (Microsoft.CrmSdk.CoreAssemblies, Microsoft.CrmSdk.Workflow)
-- [x] Create folder structure (Plugins/, WorkflowActivities/, Services/)
-- [x] Create base plugin class with common patterns (PluginBase.cs, LocalPluginContext)
-- [x] Create 2-3 example plugins:
-  - [x] AccountPreCreatePlugin - Validation example
-  - [x] ContactPostUpdatePlugin - Audit/logging example with pre-image handling
-- [x] Create workflow activity in same assembly:
-  - [x] SendNotificationActivity - Shows input/output arguments
-- [x] Enable strong-name signing (SNK file for Dataverse sandbox)
-
-### Plugin Package (Modern)
-- [x] Create src/PluginPackages/PPDSDemo.PluginPackage/ using `pac plugin init`
-- [x] Add example plugin with NuGet dependency (Newtonsoft.Json)
-- [ ] Document the difference between classic and package approach
-
-### Workflow Activities
-- [x] Workflow activities included in PPDSDemo.Plugins assembly (common pattern)
-- [x] SendNotificationActivity - Shows input/output arguments
-- [ ] CalculateValueActivity - Shows business logic in workflow (optional)
-
-### Custom APIs
-- [ ] Create src/CustomAPIs/PPDSDemo.CustomAPIs/PPDSDemo.CustomAPIs.csproj
-- [ ] Create example Custom API implementation:
-  - [ ] ppds_CalculateDiscount - Shows request/response parameters
-  - [ ] ppds_ValidateRecord - Shows bound action pattern
-
-### Unit Tests
-- [ ] Create tests/PPDSDemo.Plugins.Tests/PPDSDemo.Plugins.Tests.csproj
-- [ ] Add FakeXrmEasy or similar testing framework
-- [ ] Create example tests for each plugin
-- [ ] Create tests/PPDSDemo.Workflow.Tests/ with workflow activity tests
+| Principle | Meaning |
+|-----------|---------|
+| **One of each** | Single correct example beats multiple variations |
+| **Show, don't tell** | Components demonstrate patterns; CLAUDE.md documents them |
+| **ALM-first** | Everything exists to prove the CI/CD story works |
+| **Template-ready** | Clone and replace demo content, keep infrastructure |
 
 ---
 
-## Phase 3: Web Resources
+## Phase 1: ALM Infrastructure
 
-### TypeScript Setup
-- [x] Create src/WebResources/ppds_/ folder structure
-- [ ] Set up TypeScript configuration (tsconfig.json)
-- [ ] Add Xrm typings (@types/xrm or custom)
-- [ ] Create build script for compiling TS to JS
+*The foundation that makes everything else work.*
 
-### Form Scripts
-- [x] Create ppds_/scripts/account.form.js - Account form handler (JavaScript)
-- [ ] Create ppds_/scripts/contact.form.ts - Contact form handler
-- [ ] Create ppds_/scripts/common.ts - Shared utilities
-
-### Ribbon Scripts
-- [ ] Create ppds_/scripts/account.ribbon.ts - Custom ribbon button handlers
-
-### HTML Web Resources
-- [ ] Create ppds_/html/example-dialog.html - Custom dialog example
-- [ ] Create ppds_/css/custom-styles.css - Stylesheet example
-
-### Images
-- [ ] Add sample icon images for ribbon buttons
+| Item | Status | Notes |
+|------|--------|-------|
+| Repository structure | Done | Folders, naming conventions |
+| CLAUDE.md patterns | Done | AI-assistable coding guide |
+| Strategy docs | Done | ALM, Environment, Branching, Pipeline |
+| CI/CD: Dev to QA | Done | ci-export.yml, cd-qa.yml |
+| Branching (develop/main) | Done | Feature branch workflow |
+| CI/CD: QA to Prod | Done | cd-prod.yml |
+| Plugin build integration | Done | Build, copy assemblies & packages to solution |
+| Plugin components reference | Done | docs/reference/PLUGIN_COMPONENTS_REFERENCE.md |
+| Environment setup guide | Done | docs/guides/ENVIRONMENT_SETUP_GUIDE.md |
+| Getting started guide | Done | docs/guides/GETTING_STARTED_GUIDE.md |
+| Solution structure reference | Done | docs/reference/SOLUTION_STRUCTURE_REFERENCE.md |
+| Deployment settings | Done | Per-environment config (qa/prod.deploymentsettings.json) |
 
 ---
 
-## Phase 4: PCF Controls
+## Phase 2: Core Solution Components
 
-### Field Control
-- [ ] Create src/PCF/PPDSDemo.Controls/ base structure
-- [ ] Create simple field control (e.g., formatted phone number input)
-- [ ] Add control manifest and resources
+*Minimum viable solution content to prove ALM works.*
 
-### Dataset Control (Optional)
-- [ ] Create dataset control example (e.g., custom grid view)
-
----
-
-## Phase 5: Solution Structure
-
-### Solution Metadata
-- [x] Create solutions/PPDSDemo/src/ folder structure
-- [x] Create Solution.xml with proper publisher info (ppds prefix, PPDSDemoPublisher)
-- [x] Set up Customizations.xml
-- [x] Import solution to Dataverse
-
-### Custom Tables
-- [ ] Define ppds_DemoEntity table (simple demo entity)
-- [ ] Define ppds_DemoChild table (shows 1:N relationship)
-- [ ] Add sample columns of various types:
-  - [ ] Text, Number, DateTime, OptionSet, Lookup
-- [ ] Create table relationship definitions
-
-### Option Sets
-- [ ] Create ppds_DemoStatus global option set
-- [ ] Create ppds_Priority global option set
-
-### Security Roles
-- [ ] Create ppds Demo User role
-- [ ] Create ppds Demo Admin role
-
-### Environment Variables
-- [ ] Create ppds_ApiEndpoint environment variable
-- [ ] Create ppds_FeatureFlag environment variable (boolean)
-
-### Plugin Registration
-- [x] Create PluginAssemblies/ registration XML (via export)
-- [x] Create SdkMessageProcessingSteps/ step definitions (via export)
-- [x] Deploy plugins to Dataverse (Deploy-Components.ps1)
-
-### Web Resource Registration
-- [x] Add web resource definitions to solution (via export)
-- [x] Deploy web resources to Dataverse (Deploy-Components.ps1)
+| Item | Status | Notes |
+|------|--------|-------|
+| Plugin assembly (classic) | Done | AccountPreCreatePlugin, PluginBase |
+| Plugin package (modern) | Done | With Newtonsoft.Json dependency |
+| Workflow activity | Done | SendNotificationActivity |
+| Web resource (JS) | Done | account.form.js |
+| Custom table | Done | ppds_DemoRecord |
+| Global option set | Done | ppds_status |
+| Environment variables | Done | ppds_ApiEndpoint, ppds_EnableFeatureX |
 
 ---
 
-## Phase 6: Power Automate Flows
+## Phase 3: Extended Components
 
-### Cloud Flows
-- [ ] Create solutions/PPDSDemo/src/Workflows/ structure
-- [ ] Create example instant flow (manual trigger)
-- [ ] Create example automated flow (record trigger)
-- [ ] Include connection reference example
+*Full scope of Power Platform capabilities.*
 
----
-
-## Phase 7: Build & Deployment
-
-### Build Scripts
-- [ ] Create tools/build.ps1 - Builds all C# projects
-- [ ] Create tools/pack-solution.ps1 - Packs solution for deployment
-- [x] Create tools/Deploy-Components.ps1 - Deploys web resources and plugins to Dataverse
-- [x] Create tools/Generate-Snk.ps1 - Generates strong name keys for assembly signing
-
-### CI/CD
-- [x] Create .github/workflows/export-solution.yml - Nightly solution export from Dataverse
-- [ ] Create .github/workflows/build.yml - Build validation on PR
-- [ ] Create .github/workflows/release.yml - Solution packaging for release
+| Item | Status | Notes |
+|------|--------|-------|
+| Custom API | Pending | ppds_ValidateRecord |
+| PCF control | Pending | Simple field control |
+| Cloud flow | Pending | Automated trigger example |
+| Connection reference | Pending | Goes with flow |
+| Web resource (HTML) | Pending | Dialog/page example |
+| Web resource (CSS) | Pending | Stylesheet |
+| Web resource (Images) | Pending | Icons for ribbon/UI |
 
 ---
 
-## Phase 8: Documentation Polish
+## Phase 4: Polish
 
-### Developer Guides
-- [ ] Complete all docs/development/ guides with examples
-- [ ] Add troubleshooting section to each guide
-- [ ] Cross-reference CLAUDE.md patterns
+*Enhancements after core is solid.*
 
-### Extension Integration Docs
-- [ ] Document how each component showcases extension features
-- [ ] Add screenshots/examples of extension usage
+| Item | Status | Notes |
+|------|--------|-------|
+| PR validation workflow | Done | pr-validate.yml with build & pack validation |
+| Solution Checker integration | Done | Quality gates in PR validation |
+| Security role | Pending | One example role |
+| Business rule | Pending | One simple rule |
+| Approval gates for Prod | Pending | Manual approval workflow |
 
 ---
 
-## Notes
+## Future Considerations
 
-- This is a demo solution - prioritize clarity over complexity
-- Each component should demonstrate a specific pattern or extension feature
-- Keep business logic simple but realistic enough to be educational
-- All code should follow patterns defined in CLAUDE.md
+Topics to document when the need arises:
+
+- Personal Developer Environments (PDE)
+- Power Platform Pipelines integration
+- Environment provisioning automation
+- Canvas app source control challenges
+- Multi-solution deployment ordering
+- Rollback automation
+- ALM Accelerator comparison
+
+---
+
+## Explicitly Out of Scope
+
+This repo is intentionally minimal. We do NOT include:
+
+- Multiple examples of same component type
+- Unit testing frameworks (FakeXrmEasy, etc.)
+- TypeScript build pipelines
+- Component development tutorials (use Microsoft docs)
+- Complex multi-solution architectures
+
+---
+
+## Documentation Strategy
+
+| What We Document | Where |
+|------------------|-------|
+| Coding patterns | CLAUDE.md |
+| ALM philosophy | docs/strategy/ |
+| How to set up | docs/guides/ (ENVIRONMENT_SETUP, GETTING_STARTED) |
+
+| What We DON'T Document |
+|------------------------|
+| How to write a plugin (use Microsoft docs) |
+| How to build a PCF control (use Microsoft docs) |
+| Comprehensive development guides |
+
+The components ARE the documentation. They exist, follow patterns, and deploy.
+
+---
+
+## See Also
+
+- [strategy/](strategy/) - ALM, Environment, Branching, Pipeline strategies
+- [CLAUDE.md](../CLAUDE.md) - AI-assistable coding patterns
+- [README.md](README.md) - Documentation navigation

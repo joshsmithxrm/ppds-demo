@@ -13,54 +13,33 @@
     - Install PowerShell module: Install-Module Microsoft.Xrm.Data.PowerShell -Scope CurrentUser
     - Plugin assembly built: dotnet build src/Plugins/PPDSDemo.Plugins -c Release
 
-.PARAMETER DynamicsConnectionString
-    Connection string for Dataverse. Format:
-    - Interactive: AuthType=OAuth;Url=https://yourorg.crm.dynamics.com;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;RedirectUri=http://localhost;LoginPrompt=Auto
-    - Service Principal: AuthType=ClientSecret;Url=https://yourorg.crm.dynamics.com;ClientId=xxx;ClientSecret=xxx
-
-.PARAMETER TenantId
-    Azure AD Tenant ID (for service principal auth)
-
-.PARAMETER ClientId
-    App Registration Client ID (for service principal auth)
-
-.PARAMETER ClientSecret
-    App Registration Client Secret (for service principal auth)
-
-.PARAMETER EnvironmentUrl
-    Dataverse environment URL (e.g., https://org7a4a0326.crm.dynamics.com)
+.EXAMPLE
+    # Using environment file (recommended)
+    .\tools\Deploy-Components.ps1 -EnvFile ".env.dev"
 
 .EXAMPLE
-    # Interactive auth (will prompt for login)
-    .\tools\Deploy-Components.ps1 -EnvironmentUrl "https://org7a4a0326.crm.dynamics.com"
+    # Interactive auth for quick testing
+    .\tools\Deploy-Components.ps1 -EnvironmentUrl "https://org.crm.dynamics.com" -Interactive
 
 .EXAMPLE
     # Service principal auth
-    .\tools\Deploy-Components.ps1 -TenantId "xxx" -ClientId "xxx" -ClientSecret "xxx" -EnvironmentUrl "https://org7a4a0326.crm.dynamics.com"
+    .\tools\Deploy-Components.ps1 -TenantId "xxx" -ClientId "xxx" -ClientSecret "xxx" -EnvironmentUrl "https://org.crm.dynamics.com"
 
 .EXAMPLE
     # Direct connection string
-    .\tools\Deploy-Components.ps1 -DynamicsConnectionString "AuthType=ClientSecret;Url=https://org.crm.dynamics.com;ClientId=xxx;ClientSecret=xxx"
+    .\tools\Deploy-Components.ps1 -ConnectionString "AuthType=ClientSecret;Url=https://org.crm.dynamics.com;ClientId=xxx;ClientSecret=xxx"
 #>
 
 param(
-    [Parameter(Mandatory = $false)]
-    [string]$DynamicsConnectionString,
-
-    [Parameter(Mandatory = $false)]
+    [string]$ConnectionString,
     [string]$TenantId,
-
-    [Parameter(Mandatory = $false)]
     [string]$ClientId,
-
-    [Parameter(Mandatory = $false)]
     [string]$ClientSecret,
-
-    [Parameter(Mandatory = $false)]
     [string]$EnvironmentUrl,
+    [string]$EnvFile,
+    [switch]$Interactive,
 
     [string]$SolutionName = "PPDSDemo",
-
     [switch]$SkipPlugins,
     [switch]$SkipWebResources
 )
@@ -68,87 +47,8 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptRoot = $PSScriptRoot
 
-# =============================================================================
-# Logging Functions (following Empire patterns)
-# =============================================================================
-
-function Write-Log {
-    param([string]$Message, [string]$Level = "INFO")
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $color = switch ($Level) {
-        "INFO" { "White" }
-        "SUCCESS" { "Green" }
-        "WARNING" { "Yellow" }
-        "ERROR" { "Red" }
-        default { "White" }
-    }
-    Write-Host "[$timestamp] [$Level] $Message" -ForegroundColor $color
-}
-
-function Write-Success { param([string]$Message) Write-Log $Message "SUCCESS" }
-function Write-Warning-Log { param([string]$Message) Write-Log $Message "WARNING" }
-function Write-Error-Log { param([string]$Message) Write-Log $Message "ERROR" }
-
-# =============================================================================
-# Connection Setup
-# =============================================================================
-
-function Get-DataverseConnection {
-    param(
-        [string]$ConnectionString,
-        [string]$TenantId,
-        [string]$ClientId,
-        [string]$ClientSecret,
-        [string]$EnvironmentUrl
-    )
-
-    # Check if module is installed
-    if (-not (Get-Module -ListAvailable -Name Microsoft.Xrm.Data.PowerShell)) {
-        Write-Error-Log "Microsoft.Xrm.Data.PowerShell module not found."
-        Write-Log "Install it with: Install-Module Microsoft.Xrm.Data.PowerShell -Scope CurrentUser"
-        exit 1
-    }
-
-    Import-Module Microsoft.Xrm.Data.PowerShell -ErrorAction Stop
-
-    # Build connection string if not provided directly
-    if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
-        $useServicePrincipal = -not [string]::IsNullOrWhiteSpace($TenantId) -and
-                               -not [string]::IsNullOrWhiteSpace($ClientId) -and
-                               -not [string]::IsNullOrWhiteSpace($ClientSecret)
-
-        if ($useServicePrincipal) {
-            Write-Log "Using Service Principal authentication..."
-            $ConnectionString = "AuthType=ClientSecret;Url=$EnvironmentUrl;ClientId=$ClientId;ClientSecret=$ClientSecret"
-        }
-        else {
-            Write-Log "Using Interactive OAuth authentication..."
-            # Use the well-known Power Platform AppId for interactive auth
-            $ConnectionString = "AuthType=OAuth;Url=$EnvironmentUrl;AppId=51f81489-12ee-4a9e-aaae-a2591f45987d;RedirectUri=http://localhost;LoginPrompt=Auto"
-        }
-    }
-
-    # Redact connection string for logging
-    $sanitizedConnString = $ConnectionString -replace "(ClientSecret=)[^;]+", '$1***REDACTED***'
-    Write-Log "Connection string: $sanitizedConnString"
-
-    try {
-        Write-Log "Connecting to Dataverse..."
-        $conn = Get-CrmConnection -ConnectionString $ConnectionString
-
-        if (-not $conn -or -not $conn.IsReady) {
-            Write-Error-Log "Failed to connect to Dataverse"
-            exit 1
-        }
-
-        Write-Success "Connected to: $($conn.ConnectedOrgFriendlyName)"
-        return $conn
-    }
-    catch {
-        Write-Error-Log "Connection failed: $($_.Exception.Message)"
-        throw
-    }
-}
+# Import shared authentication module
+. "$ScriptRoot\Common-Auth.ps1"
 
 # =============================================================================
 # Web Resource Deployment
@@ -369,21 +269,30 @@ function Register-PluginStep {
         }
         $messageId = $message.CrmRecords[0].sdkmessageid
 
-        # Get SDK Message Filter ID
-        # Note: primaryobjecttypecode requires entity type code (integer), not logical name
-        # Common codes: account=1, contact=2, opportunity=3, lead=4, etc.
-        $entityTypeCodes = @{
-            "account" = 1
-            "contact" = 2
-            "opportunity" = 3
-            "lead" = 4
-            "incident" = 112
-            "systemuser" = 8
-            "team" = 9
-        }
-
+        # Get SDK Message Filter ID by dynamically looking up the entity's ObjectTypeCode
         $filterId = $null
-        $typeCode = $entityTypeCodes[$EntityName]
+        $typeCode = $null
+
+        # Query EntityDefinitions to get the ObjectTypeCode for the entity
+        try {
+            $entityDefFetch = @"
+<fetch top='1'>
+  <entity name='entity'>
+    <attribute name='objecttypecode' />
+    <filter>
+      <condition attribute='logicalname' operator='eq' value='$EntityName' />
+    </filter>
+  </entity>
+</fetch>
+"@
+            $entityDefResult = Get-CrmRecordsByFetch -conn $Connection -Fetch $entityDefFetch
+            if ($entityDefResult.CrmRecords.Count -gt 0) {
+                $typeCode = $entityDefResult.CrmRecords[0].objecttypecode
+            }
+        }
+        catch {
+            Write-Log "    Could not look up entity type code for '$EntityName'"
+        }
 
         if ($typeCode) {
             $filterFetch = @"
@@ -409,7 +318,7 @@ function Register-PluginStep {
             }
         }
         else {
-            Write-Log "    Unknown entity type code for '$EntityName', registering without filter"
+            Write-Log "    Could not determine entity type code for '$EntityName', registering without filter"
         }
 
         # Create step
@@ -455,7 +364,6 @@ function Add-ToSolution {
     Write-Log "  Adding to solution: $SolutionName (Type: $ComponentType)"
 
     try {
-        # Use AddSolutionComponent action
         $parameters = @{
             "ComponentId" = $ComponentId
             "ComponentType" = $ComponentType
@@ -463,9 +371,9 @@ function Add-ToSolution {
             "AddRequiredComponents" = $false
         }
 
-        $response = Invoke-CrmAction -conn $Connection `
+        Invoke-CrmAction -conn $Connection `
             -Name "AddSolutionComponent" `
-            -Parameters $parameters
+            -Parameters $parameters | Out-Null
 
         Write-Success "    Added to solution"
     }
@@ -496,13 +404,15 @@ $ComponentTypes = @{
     SDKMessageProcessingStep = 92
 }
 
-# Get connection
+# Get connection using Common-Auth
 $conn = Get-DataverseConnection `
-    -ConnectionString $DynamicsConnectionString `
+    -ConnectionString $ConnectionString `
     -TenantId $TenantId `
     -ClientId $ClientId `
     -ClientSecret $ClientSecret `
-    -EnvironmentUrl $EnvironmentUrl
+    -EnvironmentUrl $EnvironmentUrl `
+    -EnvFile $EnvFile `
+    -Interactive:$Interactive
 
 # -----------------------------------------------------------------------------
 # Deploy Web Resources

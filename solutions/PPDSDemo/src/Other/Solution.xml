@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<ImportExportXml version="9.2.25111.170" SolutionPackageVersion="9.2" languagecode="1033" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.25111.170" OrganizationSchemaType="Full" CRMServerServiceabilityVersion="9.2.25111.00170">
+<ImportExportXml version="9.2.25111.170" SolutionPackageVersion="9.2" languagecode="1033" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.25111.170" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.25111.00172">
   <SolutionManifest>
     <UniqueName>PPDSDemo</UniqueName>
     <LocalizedNames>
@@ -9,7 +9,7 @@
       <Description description="Demo solution showcasing the Power Platform Developer Suite VS Code extension" languagecode="1033" />
     </Descriptions>
     <Version>1.0.0.0</Version>
-    <Managed>0</Managed>
+    <Managed>2</Managed>
     <Publisher>
       <UniqueName>PPDSDemoPublisher</UniqueName>
       <LocalizedNames>
@@ -82,10 +82,9 @@
       </Addresses>
     </Publisher>
     <RootComponents>
+      <RootComponent type="1" schemaName="ppds_demorecord" behavior="0" />
       <RootComponent type="61" schemaName="ppds_/scripts/account.form.js" behavior="0" />
-      <RootComponent type="91" id="{d013d2aa-19d7-f011-8544-000d3a59b27d}" schemaName="PPDSDemo.Plugins, Version=1.0.0.0, Culture=neutral, PublicKeyToken=87a4b0dac59374c6" behavior="0" />
-      <RootComponent type="92" id="{0c4abbfa-19d7-f011-8544-000d3a59b27d}" behavior="0" />
-      <RootComponent type="92" id="{104abbfa-19d7-f011-8544-000d3a59b27d}" behavior="0" />
+      <RootComponent type="9" schemaName="ppds_status" behavior="0" />
     </RootComponents>
     <MissingDependencies />
   </SolutionManifest>

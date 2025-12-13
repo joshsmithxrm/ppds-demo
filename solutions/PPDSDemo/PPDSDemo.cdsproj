@@ -16,15 +16,10 @@
     <SolutionRootPath>src</SolutionRootPath>
   </PropertyGroup>
 
-  <!-- 
-    Solution Packager overrides, un-comment to use: SolutionPackagerType (Managed, Unmanaged, Both)
-    Solution Localization Control, if you want to enabled localization of your solution, un-comment SolutionPackageEnableLocalization and set the value to true. - Requires use of -loc flag on Solution Clone or Sync
-  -->
   <!--
-  <PropertyGroup>
-    <SolutionPackageType>Managed</SolutionPackageType>
-    <SolutionPackageEnableLocalization>false</SolutionPackageEnableLocalization>
-  </PropertyGroup>
+    Solution Packager overrides (optional)
+    Default behavior: Debug=Unmanaged, Release=Managed
+    This works because source was unpacked with 'pac solution unpack' using packagetype Both
   -->
 
   <ItemGroup>

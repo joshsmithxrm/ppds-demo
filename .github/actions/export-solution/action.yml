@@ -1,0 +1,95 @@
+# =============================================================================
+# Composite Action: Export Solution
+# =============================================================================
+# Exports and unpacks a Power Platform solution from the authenticated environment.
+#
+# Exports BOTH managed and unmanaged solutions, then unpacks with --packagetype Both
+# to create a single source folder that can build either managed or unmanaged.
+#
+# See: https://learn.microsoft.com/en-us/power-platform/alm/solution-packager-tool
+#
+# Prerequisites:
+#   - Must authenticate first using pac-auth action
+#
+# Usage:
+#   - name: Export solution
+#     uses: ./.github/actions/export-solution
+#     with:
+#       solution-name: PPDSDemo
+#       output-folder: solutions/PPDSDemo/src
+#
+# =============================================================================
+
+name: 'Export Solution'
+description: 'Export and unpack Power Platform solution from environment'
+
+inputs:
+  solution-name:
+    description: 'Solution unique name to export'
+    required: true
+  output-folder:
+    description: 'Folder for unpacked solution (flat structure, supports both managed/unmanaged builds)'
+    required: true
+  temp-folder:
+    description: 'Temporary folder for zip files (cleaned up after unpack)'
+    required: false
+    default: './exports'
+
+outputs:
+  solution-folder:
+    description: 'Path to unpacked solution folder'
+    value: ${{ inputs.output-folder }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup paths
+      id: paths
+      shell: bash
+      run: |
+        mkdir -p "${{ inputs.temp-folder }}"
+
+    - name: Publish customizations
+      shell: bash
+      run: |
+        echo "Publishing all customizations before export..."
+        pac solution publish
+
+    - name: Export unmanaged solution
+      shell: bash
+      run: |
+        echo "Exporting unmanaged solution: ${{ inputs.solution-name }}"
+        pac solution export \
+          --name "${{ inputs.solution-name }}" \
+          --path "${{ inputs.temp-folder }}/${{ inputs.solution-name }}.zip" \
+          --managed false \
+          --overwrite
+
+    - name: Export managed solution
+      shell: bash
+      run: |
+        echo "Exporting managed solution: ${{ inputs.solution-name }}"
+        pac solution export \
+          --name "${{ inputs.solution-name }}" \
+          --path "${{ inputs.temp-folder }}/${{ inputs.solution-name }}_managed.zip" \
+          --managed true \
+          --overwrite
+
+    - name: Unpack with packagetype Both
+      shell: bash
+      run: |
+        echo "Unpacking both managed and unmanaged to: ${{ inputs.output-folder }}"
+        pac solution unpack \
+          --zipfile "${{ inputs.temp-folder }}/${{ inputs.solution-name }}.zip" \
+          --folder "${{ inputs.output-folder }}" \
+          --packagetype Both \
+          --processCanvasApps \
+          --allowDelete \
+          --allowWrite
+
+    - name: Clean up temporary zip files
+      shell: bash
+      run: |
+        echo "Cleaning up temporary files..."
+        rm -f "${{ inputs.temp-folder }}/${{ inputs.solution-name }}.zip"
+        rm -f "${{ inputs.temp-folder }}/${{ inputs.solution-name }}_managed.zip"

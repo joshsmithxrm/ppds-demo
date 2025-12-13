@@ -1,0 +1,211 @@
+# =============================================================================
+# Composite Action: Copy Plugin Assemblies
+# =============================================================================
+# Copies built plugin assemblies to the solution's PluginAssemblies folders
+# so they can be packed into the solution. Handles the naming convention
+# differences between build output and PAC CLI expectations.
+#
+# Prerequisites:
+#   - Must build the solution first using build-solution action
+#   - Solution must already have PluginAssemblies folders (from export)
+#
+# Usage:
+#   - name: Copy plugin assemblies
+#     uses: ./.github/actions/copy-plugin-assemblies
+#     with:
+#       source-assembly: src/Plugins/PPDSDemo.Plugins/bin/Release/net462/PPDSDemo.Plugins.dll
+#       solution-folder: solutions/PPDSDemo/src
+#
+# Note: This action finds the target folder by matching the assembly name pattern
+# and handles the naming convention where 'PPDSDemo.Plugins.dll' becomes
+# 'PPDSDemoPlugins.dll' in the solution folder.
+#
+# =============================================================================
+
+name: 'Copy Plugin Assemblies'
+description: 'Copy built plugin assemblies to solution folder for packing'
+
+inputs:
+  source-assembly:
+    description: 'Path to built plugin assembly DLL'
+    required: true
+  solution-folder:
+    description: 'Base path to unpacked solution (e.g., solutions/PPDSDemo/src)'
+    required: true
+  copy-to-managed:
+    description: 'Copy to Managed subfolder'
+    required: false
+    default: 'true'
+  copy-to-unmanaged:
+    description: 'Copy to Unmanaged subfolder'
+    required: false
+    default: 'true'
+  copy-to-root:
+    description: 'Copy to root PluginAssemblies folder (if exists)'
+    required: false
+    default: 'true'
+
+outputs:
+  copied-count:
+    description: 'Number of locations where assembly was copied'
+    value: ${{ steps.copy.outputs.copied_count }}
+  target-paths:
+    description: 'Paths where assembly was copied (newline-separated)'
+    value: ${{ steps.copy.outputs.target_paths }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      id: validate
+      shell: bash
+      run: |
+        if [ ! -f "${{ inputs.source-assembly }}" ]; then
+          echo "::error::Source assembly not found: ${{ inputs.source-assembly }}"
+          exit 1
+        fi
+
+        if [ ! -d "${{ inputs.solution-folder }}" ]; then
+          echo "::error::Solution folder not found: ${{ inputs.solution-folder }}"
+          exit 1
+        fi
+
+        echo "Source assembly: ${{ inputs.source-assembly }}"
+        echo "Solution folder: ${{ inputs.solution-folder }}"
+
+    - name: Determine target name
+      id: names
+      shell: bash
+      run: |
+        # Get source assembly filename
+        SOURCE_FILE=$(basename "${{ inputs.source-assembly }}")
+        echo "Source filename: $SOURCE_FILE"
+
+        # Derive the target filename (PAC CLI removes dots from assembly name)
+        # PPDSDemo.Plugins.dll -> PPDSDemoPlugins.dll
+        # Get the assembly name without .dll extension
+        ASSEMBLY_NAME="${SOURCE_FILE%.dll}"
+
+        # Remove dots from assembly name for target filename
+        TARGET_NAME=$(echo "$ASSEMBLY_NAME" | tr -d '.').dll
+
+        # Also create a pattern to find existing folders
+        # PPDSDemo.Plugins -> PPDSDemoPlugins-*
+        FOLDER_PATTERN=$(echo "$ASSEMBLY_NAME" | tr -d '.')
+
+        echo "Assembly name: $ASSEMBLY_NAME"
+        echo "Target filename: $TARGET_NAME"
+        echo "Folder pattern: $FOLDER_PATTERN"
+
+        echo "target_name=$TARGET_NAME" >> $GITHUB_OUTPUT
+        echo "folder_pattern=$FOLDER_PATTERN" >> $GITHUB_OUTPUT
+
+    - name: Copy assemblies
+      id: copy
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source-assembly }}
+        SOLUTION_FOLDER: ${{ inputs.solution-folder }}
+        TARGET_NAME: ${{ steps.names.outputs.target_name }}
+        FOLDER_PATTERN: ${{ steps.names.outputs.folder_pattern }}
+        COPY_MANAGED: ${{ inputs.copy-to-managed }}
+        COPY_UNMANAGED: ${{ inputs.copy-to-unmanaged }}
+        COPY_ROOT: ${{ inputs.copy-to-root }}
+      run: |
+        set -euo pipefail
+
+        COPIED_COUNT=0
+        TARGET_PATHS=""
+
+        copy_to_location() {
+          local base_path="$1"
+          local location_name="$2"
+
+          # Find PluginAssemblies folder matching our pattern
+          local plugin_folders=$(find "$base_path" -type d -name "${FOLDER_PATTERN}-*" 2>/dev/null || echo "")
+
+          if [ -z "$plugin_folders" ]; then
+            echo "No matching PluginAssemblies folder found in $location_name"
+            return
+          fi
+
+          for folder in $plugin_folders; do
+            local target_path="$folder/$TARGET_NAME"
+            echo "Copying to: $target_path"
+            cp "$SOURCE" "$target_path"
+
+            if [ -f "$target_path" ]; then
+              COPIED_COUNT=$((COPIED_COUNT + 1))
+              TARGET_PATHS="${TARGET_PATHS}${target_path}\n"
+              echo "Successfully copied to $location_name"
+            fi
+          done
+        }
+
+        # Copy to Managed folder
+        if [ "$COPY_MANAGED" = "true" ]; then
+          if [ -d "$SOLUTION_FOLDER/Managed/PluginAssemblies" ]; then
+            copy_to_location "$SOLUTION_FOLDER/Managed/PluginAssemblies" "Managed"
+          else
+            echo "Managed/PluginAssemblies folder not found"
+          fi
+        fi
+
+        # Copy to Unmanaged folder
+        if [ "$COPY_UNMANAGED" = "true" ]; then
+          if [ -d "$SOLUTION_FOLDER/Unmanaged/PluginAssemblies" ]; then
+            copy_to_location "$SOLUTION_FOLDER/Unmanaged/PluginAssemblies" "Unmanaged"
+          else
+            echo "Unmanaged/PluginAssemblies folder not found"
+          fi
+        fi
+
+        # Copy to root PluginAssemblies folder (if exists)
+        if [ "$COPY_ROOT" = "true" ]; then
+          if [ -d "$SOLUTION_FOLDER/PluginAssemblies" ]; then
+            copy_to_location "$SOLUTION_FOLDER/PluginAssemblies" "Root"
+          else
+            echo "Root PluginAssemblies folder not found"
+          fi
+        fi
+
+        echo ""
+        echo "=== Copy Summary ==="
+        echo "Copied to $COPIED_COUNT location(s)"
+
+        echo "copied_count=$COPIED_COUNT" >> $GITHUB_OUTPUT
+
+        # Multi-line output
+        {
+          echo "target_paths<<EOF"
+          echo -e "$TARGET_PATHS"
+          echo "EOF"
+        } >> $GITHUB_OUTPUT
+
+        if [ $COPIED_COUNT -eq 0 ]; then
+          echo "::warning::No assemblies were copied. Ensure PluginAssemblies folders exist."
+        fi
+
+    - name: Generate step summary
+      shell: bash
+      env:
+        COPIED_COUNT: ${{ steps.copy.outputs.copied_count }}
+        TARGET_PATHS: ${{ steps.copy.outputs.target_paths }}
+        SOURCE: ${{ inputs.source-assembly }}
+        TARGET_NAME: ${{ steps.names.outputs.target_name }}
+      run: |
+        echo "## Plugin Assembly Copy" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Source | \`$(basename "$SOURCE")\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Target Name | \`$TARGET_NAME\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Copied To | $COPIED_COUNT location(s) |" >> $GITHUB_STEP_SUMMARY
+
+        if [ -n "$TARGET_PATHS" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Target Locations" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo -e "$TARGET_PATHS" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        fi
