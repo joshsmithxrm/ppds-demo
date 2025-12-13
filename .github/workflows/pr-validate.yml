@@ -32,6 +32,8 @@ on:
       - 'src/**'
       - '*.sln'
       - '**/*.csproj'
+      - '.github/**'
+      - 'tools/**'
 
   # Manual trigger
   workflow_dispatch:

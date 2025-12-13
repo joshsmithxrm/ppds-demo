@@ -270,74 +270,86 @@ Benefits:
 
 ---
 
-## Branch Protection Rules
+## Branch Rulesets
 
-Configure these rules in GitHub: Settings → Branches → Add branch protection rule
+We use **GitHub Rulesets** (not legacy branch protection) to enforce different merge strategies per branch. This is critical for our workflow:
 
-### `main` Branch
+- **Squash merge only** for PRs to `develop` (clean feature commits)
+- **Merge commit only** for PRs to `main` (preserve feature history)
 
-| Setting | Value | Reason |
-|---------|-------|--------|
-| Require PR before merging | Yes | No direct commits to production |
+Ruleset definitions are stored in `.github/rulesets/` for reference.
+
+### `main` Branch Ruleset
+
+| Rule | Setting | Reason |
+|------|---------|--------|
+| Require PR | Yes | No direct commits to production |
 | Required approvals | 1 | Human review before production |
 | Dismiss stale reviews | Yes | Re-review after new commits |
-| Require status checks | Yes | CI must pass |
+| Require last push approval | Yes | Final review after any changes |
+| Require conversation resolution | Yes | All feedback must be addressed |
 | Status checks (strict) | Yes | Branch must be up-to-date |
 | Required checks | `Validation Status` | PR validation workflow |
-| Include administrators | Yes | No bypass, even for admins |
-| Allow force pushes | No | Protect history |
-| Allow deletions | No | Protect branch |
+| Allowed merge methods | **Merge commit only** | Preserve feature commits on main |
+| Branch deletion | Blocked | Prevent accidental deletion |
+| Force pushes | Blocked | Protect history |
 
-```yaml
-# GitHub API equivalent (see tools/Setup-BranchProtection.ps1)
-main:
-  required_pull_request_reviews:
-    required_approving_review_count: 1
-    dismiss_stale_reviews: true
-  required_status_checks:
-    strict: true
-    contexts:
-      - "Validation Status"
-  enforce_admins: true
-  allow_force_pushes: false
-  allow_deletions: false
-```
+**Key:** `allowed_merge_methods: ["merge"]` - Squash is NOT allowed on main.
 
-### `develop` Branch
+### `develop` Branch Ruleset
 
-| Setting | Value | Reason |
-|---------|-------|--------|
-| Require PR before merging | Yes | Feature branches merge via PR |
-| Required approvals | 0 | Optional for feature PRs |
-| Dismiss stale reviews | No | Not critical for integration branch |
-| Require status checks | Yes | CI must pass |
+| Rule | Setting | Reason |
+|------|---------|--------|
+| Require PR | Yes | Feature branches merge via PR |
+| Required approvals | 1 | Code review |
+| Dismiss stale reviews | Yes | Re-review after changes |
+| Require conversation resolution | Yes | All feedback must be addressed |
 | Status checks (strict) | No | Nightly exports would conflict |
 | Required checks | `Validation Status` | PR validation workflow |
-| Include administrators | No | Allow automated pipeline bypass |
-| Allow force pushes | No | Protect history |
-| Allow deletions | No | Protect branch |
+| Allowed merge methods | **Squash only** | Clean feature history |
+| Branch deletion | Blocked | Prevent accidental deletion |
+| Force pushes | Blocked | Protect history |
 
-```yaml
-develop:
-  required_pull_request_reviews:
-    required_approving_review_count: 0
-  required_status_checks:
-    strict: false
-    contexts:
-      - "Validation Status"
-  enforce_admins: false  # Allows GitHub Actions to push
-  allow_force_pushes: false
-  allow_deletions: false
+**Key:** `allowed_merge_methods: ["squash"]` - Merge commits NOT allowed on develop.
+
+> **Note:** Required approvals is set to 1 (not 0) to ensure code review even for the integration branch.
+
+### Repository Merge Settings
+
+Repository-level settings (Settings → Pull Requests) enable both methods:
+- ✅ Allow merge commits (for main)
+- ✅ Allow squash merging (for develop)
+- ❌ Allow rebase merging (disabled)
+
+**Squash commit formatting:** When squash merging to `develop`, commits use:
+- **Title:** PR title (clean, descriptive feature name)
+- **Message:** PR body (contains context, linked issues, etc.)
+
+This ensures squashed commits are meaningful and traceable back to their PR.
+
+The **rulesets** control which method is available for each target branch.
+
+### Applying Rulesets
+
+**Recommended:** Use the PowerShell script for idempotent setup (handles both create and update):
+
+```powershell
+# Configure all rulesets and merge settings
+.\tools\Setup-BranchProtection.ps1
+
+# Preview changes without applying
+.\tools\Setup-BranchProtection.ps1 -WhatIf
 ```
 
-### Automated Pipeline Bypass
+**Manual API (initial creation only):**
 
-The nightly export pipeline commits directly to `develop`. This works because:
-- `enforce_admins: false` on develop
-- GitHub Actions uses `GITHUB_TOKEN` with write permissions
-- Status checks not required for direct pushes (only PRs)
+```bash
+# These POST commands only work for NEW rulesets (fail if already exists)
+gh api repos/OWNER/REPO/rulesets -X POST --input .github/rulesets/develop.json
+gh api repos/OWNER/REPO/rulesets -X POST --input .github/rulesets/main.json
+```
 
-For stricter environments, use a GitHub App or PAT with bypass permissions.
+See `.github/rulesets/` for the complete ruleset definitions.
 
 ---
 
