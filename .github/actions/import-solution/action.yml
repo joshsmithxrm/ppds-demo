@@ -249,26 +249,34 @@ runs:
 
         is_deterministic_error() {
           local error_msg="$1"
+          local pattern
+          shopt -s nocasematch
           for pattern in "${DETERMINISTIC_PATTERNS[@]}"; do
-            if echo "$error_msg" | grep -qi "$pattern"; then
+            if [[ "$error_msg" == *"$pattern"* ]]; then
+              shopt -u nocasematch
               return 0
             fi
           done
+          shopt -u nocasematch
           return 1
         }
 
         is_transient_error() {
           local error_msg="$1"
+          local pattern
           # First check if it's a deterministic error - never retry those
           if is_deterministic_error "$error_msg"; then
             return 1
           fi
           # Then check for transient patterns
+          shopt -s nocasematch
           for pattern in "${TRANSIENT_PATTERNS[@]}"; do
-            if echo "$error_msg" | grep -qi "$pattern"; then
+            if [[ "$error_msg" == *"$pattern"* ]]; then
+              shopt -u nocasematch
               return 0
             fi
           done
+          shopt -u nocasematch
           return 1
         }
 
