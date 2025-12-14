@@ -81,6 +81,21 @@ Create the GitHub Actions workflow for automated deployment.
 | Add usage examples to design doc | Complete | See below |
 | PR review and merge | Complete | |
 
+### Phase 6: Enhancements (Post-Initial Release)
+
+Additional features added after initial implementation.
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Solution component management | Complete | Auto-add assemblies, types, steps, images to solution |
+| Publisher prefix support | Complete | Required for plugin packages |
+| Drift detection | Complete | `-DetectDrift` flag compares registrations.json to Dataverse |
+| Secondary entity support | Complete | For relationship messages (Associate, SetRelated, etc.) |
+| Plugin type auto-creation | Complete | Creates missing types for classic assemblies before step registration |
+| Image update error fixes | Complete | Change detection, proper PATCH handling |
+| allTypeNames for orphan detection | Complete | Prevents accidental deletion of workflow activities |
+| Plugin removal guide | Complete | docs/guides/PLUGIN_REMOVAL_GUIDE.md |
+
 ---
 
 ## Usage Examples
@@ -118,6 +133,12 @@ Create the GitHub Actions workflow for automated deployment.
 
 # Build and deploy
 .\tools\Deploy-Plugins.ps1 -Build
+
+# Detect drift between registrations.json and Dataverse
+.\tools\Deploy-Plugins.ps1 -DetectDrift
+
+# Deploy and show drift report
+.\tools\Deploy-Plugins.ps1 -DetectDrift -Force
 ```
 
 ### CI/CD Workflow
@@ -145,6 +166,10 @@ Manual trigger options:
 | 2025-12-13 | Web API for step registration | PAC CLI doesn't support step registration |
 | 2025-12-13 | Default warn, -Force to delete | Safety first for orphaned steps |
 | 2025-12-13 | Dev default, support all envs | Most common use case is local dev |
+| 2025-12-13 | Auto-add to solution on create/update | Ensures all components are in solution for export |
+| 2025-12-13 | Create plugin types for classic assemblies | PAC CLI doesn't auto-discover like NuGet packages |
+| 2025-12-13 | Use allTypeNames for orphan detection | Prevents deletion of workflow activities and stepless plugins |
+| 2025-12-13 | Two-phase plugin removal workflow | PAC CLI validates types exist; steps must be removed first |
 
 ---
 
@@ -166,6 +191,10 @@ Manual trigger options:
 - `src/Shared/PPDSDemo.Sdk/Enums/PluginMode.cs`
 - `src/Shared/PPDSDemo.Sdk/Enums/PluginImageType.cs`
 
+### Added in Phase 6 (Enhancements)
+- `docs/guides/PLUGIN_REMOVAL_GUIDE.md` - Guide for removing plugins safely
+- `tools/Common-Auth.ps1` - Shared authentication helper
+
 ---
 
 ## Notes
@@ -175,7 +204,14 @@ Implementation completed successfully. All phases are complete and tested.
 The plugin deployment tooling provides a complete workflow from code to deployment:
 1. Developers add `[PluginStep]` and `[PluginImage]` attributes to plugins
 2. Build creates compiled assemblies
-3. Extraction tool generates `registrations.json` from attributes
+3. Extraction tool generates `registrations.json` from attributes (including `allTypeNames`)
 4. Deployment tool pushes assemblies and registers steps
 5. CI/CD automates deployment on code changes
 6. Nightly export captures registrations in solution for ALM flow
+
+### Key Features
+- **Drift detection**: Compare local registrations.json against Dataverse state
+- **Solution management**: Auto-add all components to specified solution
+- **Orphan detection**: Safe cleanup of removed steps and plugin types
+- **Plugin type auto-creation**: For classic assemblies (NuGet packages auto-discover)
+- **Two-phase removal**: Safe workflow for removing plugins (see PLUGIN_REMOVAL_GUIDE.md)
