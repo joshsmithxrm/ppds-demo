@@ -1,6 +1,6 @@
 # Roadmap
 
-This demo solution showcases Power Platform ALM patterns with **one example of each major component type**.
+Planned additions to showcase Power Platform component types and ALM patterns.
 
 ---
 
@@ -15,70 +15,31 @@ This demo solution showcases Power Platform ALM patterns with **one example of e
 
 ---
 
-## Phase 1: ALM Infrastructure
+## Extended Components
 
-*The foundation that makes everything else work.*
+*Full scope of Power Platform capabilities to showcase the VS Code extension.*
 
-| Item | Status | Notes |
-|------|--------|-------|
-| Repository structure | Done | Folders, naming conventions |
-| CLAUDE.md patterns | Done | AI-assistable coding guide |
-| Strategy docs | Done | ALM, Environment, Branching, Pipeline |
-| CI/CD: Dev to QA | Done | ci-export.yml, cd-qa.yml |
-| Branching (develop/main) | Done | Feature branch workflow |
-| CI/CD: QA to Prod | Done | cd-prod.yml |
-| Plugin build integration | Done | Build, copy assemblies & packages to solution |
-| Plugin components reference | Done | docs/reference/PLUGIN_COMPONENTS_REFERENCE.md |
-| Environment setup guide | Done | docs/guides/ENVIRONMENT_SETUP_GUIDE.md |
-| Getting started guide | Done | docs/guides/GETTING_STARTED_GUIDE.md |
-| Solution structure reference | Done | docs/reference/SOLUTION_STRUCTURE_REFERENCE.md |
-| Deployment settings | Done | Per-environment config (qa/prod.deploymentsettings.json) |
+| Item | Notes |
+|------|-------|
+| Custom API | `ppds_ValidateRecord` |
+| PCF control | Simple field control |
+| Cloud flow | Automated trigger example |
+| Connection reference | Goes with flow |
+| Web resource (HTML) | Dialog/page example |
+| Web resource (CSS) | Stylesheet |
+| Web resource (Images) | Icons for ribbon/UI |
 
 ---
 
-## Phase 2: Core Solution Components
+## Polish
 
-*Minimum viable solution content to prove ALM works.*
+*Enhancements to round out the demo.*
 
-| Item | Status | Notes |
-|------|--------|-------|
-| Plugin assembly (classic) | Done | AccountPreCreatePlugin, PluginBase |
-| Plugin package (modern) | Done | With Newtonsoft.Json dependency |
-| Workflow activity | Done | SendNotificationActivity |
-| Web resource (JS) | Done | account.form.js |
-| Custom table | Done | ppds_DemoRecord |
-| Global option set | Done | ppds_status |
-| Environment variables | Done | ppds_ApiEndpoint, ppds_EnableFeatureX |
-
----
-
-## Phase 3: Extended Components
-
-*Full scope of Power Platform capabilities.*
-
-| Item | Status | Notes |
-|------|--------|-------|
-| Custom API | Pending | ppds_ValidateRecord |
-| PCF control | Pending | Simple field control |
-| Cloud flow | Pending | Automated trigger example |
-| Connection reference | Pending | Goes with flow |
-| Web resource (HTML) | Pending | Dialog/page example |
-| Web resource (CSS) | Pending | Stylesheet |
-| Web resource (Images) | Pending | Icons for ribbon/UI |
-
----
-
-## Phase 4: Polish
-
-*Enhancements after core is solid.*
-
-| Item | Status | Notes |
-|------|--------|-------|
-| PR validation workflow | Done | pr-validate.yml with build & pack validation |
-| Solution Checker integration | Done | Quality gates in PR validation |
-| Security role | Pending | One example role |
-| Business rule | Pending | One simple rule |
-| Approval gates for Prod | Pending | Manual approval workflow |
+| Item | Notes |
+|------|-------|
+| Security role | One example role |
+| Business rule | One simple rule |
+| Approval gates for Prod | GitHub environment protection |
 
 ---
 
@@ -96,33 +57,14 @@ Topics to document when the need arises:
 
 ---
 
-## Explicitly Out of Scope
+## Out of Scope
 
 This repo is intentionally minimal. We do NOT include:
 
 - Multiple examples of same component type
 - Unit test projects (patterns documented in [TESTING_PATTERNS.md](reference/TESTING_PATTERNS.md) for reference)
-- TypeScript build pipelines
 - Component development tutorials (use Microsoft docs)
 - Complex multi-solution architectures
-
----
-
-## Documentation Strategy
-
-| What We Document | Where |
-|------------------|-------|
-| Coding patterns | CLAUDE.md |
-| ALM philosophy | docs/strategy/ |
-| How to set up | docs/guides/ (ENVIRONMENT_SETUP, GETTING_STARTED) |
-
-| What We DON'T Document |
-|------------------------|
-| How to write a plugin (use Microsoft docs) |
-| How to build a PCF control (use Microsoft docs) |
-| Comprehensive development guides |
-
-The components ARE the documentation. They exist, follow patterns, and deploy.
 
 ---
 
