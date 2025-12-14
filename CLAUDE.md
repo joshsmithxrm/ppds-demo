@@ -50,6 +50,23 @@ This is part of the **PPDS ecosystem**:
 
 ---
 
+## Shell Commands & Tools
+
+1. **NEVER use `cd`** - Use absolute paths or tool path parameters
+2. **Use Grep tool** - NOT `bash grep` or `bash rg`
+3. **Use Glob tool** - NOT `bash find` or `bash ls` for file searches
+4. **Use Read tool** - NOT `bash cat`, `bash head`, or `bash tail`
+
+```
+# BAD - triggers permission prompts, harder to read
+cd C:/VS/ppds/demo && grep -r "pattern" --include="*.cs"
+
+# GOOD - use Grep tool with path parameter
+Grep(pattern="pattern", path="C:/VS/ppds/demo", glob="*.cs")
+```
+
+---
+
 ## Solution Structure (Packagetype Both)
 
 Solutions use unified source control via `pac solution unpack --packagetype Both`:
