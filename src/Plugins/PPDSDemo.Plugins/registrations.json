@@ -1,7 +1,7 @@
 {
   "$schema": "../../../tools/schemas/plugin-registration.schema.json",
   "version": "1.0",
-  "generatedAt": "2025-12-13T23:05:13Z",
+  "generatedAt": "2025-12-13T23:54:07Z",
   "assemblies": [
     {
       "name": "PPDSDemo.Plugins",
@@ -45,22 +45,6 @@
                   "entityAlias": "PreImage"
                 }
               ]
-            }
-          ]
-        },
-        {
-          "typeName": "PPDSDemo.Plugins.Plugins.NewPluginTypeTestPlugin",
-          "steps": [
-            {
-              "name": "PPDSDemo.Plugins.Plugins.NewPluginTypeTestPlugin: Update of account",
-              "message": "Update",
-              "entity": "account",
-              "stage": "PostOperation",
-              "mode": "Asynchronous",
-              "executionOrder": 1,
-              "filteringAttributes": "description",
-              "configuration": null,
-              "images": []
             }
           ]
         }
