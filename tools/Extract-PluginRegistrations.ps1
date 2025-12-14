@@ -151,15 +151,19 @@ try {
         Write-PluginLog "  DLL: $($proj.RelativeDllPath)"
 
         try {
-            # Extract registrations via reflection
+            # Extract ALL plugin/workflow type names (for orphan detection during deployment)
+            $allTypeNames = Get-AllPluginTypeNames -DllPath $proj.DllPath
+            Write-PluginDebug "  Found $($allTypeNames.Count) total plugin/workflow type(s)"
+
+            # Extract registrations via reflection (only plugins with [PluginStep] attributes)
             $plugins = Get-PluginRegistrations -DllPath $proj.DllPath
 
             if ($plugins.Count -eq 0) {
                 Write-PluginWarning "  No plugins with [PluginStep] attributes found"
-                continue
+                # Still continue to generate registrations.json with allTypeNames
             }
 
-            Write-PluginLog "  Found $($plugins.Count) plugin class(es)"
+            Write-PluginLog "  Found $($plugins.Count) plugin class(es) with step registrations"
 
             # Count total steps and images
             $totalSteps = ($plugins | ForEach-Object { $_.steps.Count } | Measure-Object -Sum).Sum
@@ -191,6 +195,7 @@ try {
                 type = $proj.Type
                 solution = $existingSolution
                 path = $proj.RelativeDllPath
+                allTypeNames = $allTypeNames
                 plugins = $plugins
             }
 

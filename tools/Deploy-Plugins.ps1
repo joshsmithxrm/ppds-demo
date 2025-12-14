@@ -400,6 +400,68 @@ try {
                 continue
             }
 
+            # For classic assemblies, check for orphaned plugin types BEFORE pushing
+            # PAC CLI will fail if plugin types exist in Dataverse but not in the assembly
+            # We use allTypeNames from registrations.json which includes ALL types in the DLL
+            # (plugins with steps, plugins without steps, and workflow activities)
+            $skipAssemblyPush = $false
+            if ($asmReg.type -eq "Assembly" -and -not $isWhatIf) {
+                $existingAssembly = Get-PluginAssembly -ApiUrl $apiUrl -AuthHeaders $authHeaders -Name $asmReg.name
+                if ($existingAssembly) {
+                    Write-PluginDebug "Checking for orphaned plugin types..."
+                    $existingPluginTypes = Get-PluginTypesForAssembly -ApiUrl $apiUrl -AuthHeaders $authHeaders -AssemblyId $existingAssembly.pluginassemblyid
+
+                    # Use allTypeNames if available, otherwise fall back to plugins array
+                    $typeNamesInAssembly = if ($asmReg.allTypeNames) {
+                        $asmReg.allTypeNames
+                    } else {
+                        Write-PluginWarning "allTypeNames not found in registrations.json - run Extract-PluginRegistrations.ps1 to update"
+                        $asmReg.plugins | ForEach-Object { $_.typeName }
+                    }
+
+                    foreach ($existingType in $existingPluginTypes) {
+                        if ($existingType.typename -notin $typeNamesInAssembly) {
+                            # This plugin type exists in Dataverse but NOT in the assembly DLL
+                            # It's truly orphaned - the class has been deleted
+                            $stepCount = Get-PluginTypeStepCount -ApiUrl $apiUrl -AuthHeaders $authHeaders -PluginTypeId $existingType.plugintypeid
+
+                            if ($stepCount -gt 0) {
+                                # Has active steps - steps need to be deleted first
+                                Write-PluginError "Orphaned plugin type '$($existingType.typename)' has $stepCount active step(s)"
+                                Write-PluginError "Delete the steps first (deploy with -Force after removing [PluginStep] attributes)"
+                                Write-PluginError "See docs/guides/PLUGIN_REMOVAL_GUIDE.md for the proper removal workflow"
+                                $skipAssemblyPush = $true
+                            }
+                            elseif ($Force) {
+                                # No steps and -Force specified - safe to delete
+                                Write-PluginWarning "Deleting orphaned plugin type: $($existingType.typename)"
+                                try {
+                                    Remove-PluginType -ApiUrl $apiUrl -AuthHeaders $authHeaders -PluginTypeId $existingType.plugintypeid
+                                    Write-PluginSuccess "  Plugin type deleted"
+                                }
+                                catch {
+                                    Write-PluginError "  Failed to delete plugin type: $($_.Exception.Message)"
+                                    Write-PluginError "Assembly update will likely fail. Delete the plugin type manually via Plugin Registration Tool."
+                                    $skipAssemblyPush = $true
+                                }
+                            }
+                            else {
+                                # No steps but no -Force - this will cause PAC CLI to fail
+                                Write-PluginWarning "Orphaned plugin type found: $($existingType.typename)"
+                                Write-PluginWarning "Use -Force to delete it, or remove manually via Plugin Registration Tool"
+                                Write-PluginError "Assembly update will fail until orphaned plugin types are removed"
+                                $skipAssemblyPush = $true
+                            }
+                        }
+                    }
+                }
+            }
+
+            if ($skipAssemblyPush) {
+                Write-PluginError "Skipping assembly push due to orphaned plugin type issues"
+                continue
+            }
+
             $deploySuccess = Deploy-PluginAssembly -ApiUrl $apiUrl -AuthHeaders $authHeaders -Path $deployPath -AssemblyName $asmReg.name -Type $asmReg.type -SolutionUniqueName $solutionUniqueName -PublisherPrefix $publisherPrefix -WhatIf:$isWhatIf
             if (-not $deploySuccess -and -not $isWhatIf) {
                 Write-PluginError "Failed to deploy assembly, skipping step registration"

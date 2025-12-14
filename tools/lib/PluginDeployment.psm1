@@ -302,6 +302,92 @@ function Get-PluginRegistrations {
     }
 }
 
+function Get-AllPluginTypeNames {
+    <#
+    .SYNOPSIS
+        Gets all plugin and workflow activity type names from a compiled assembly.
+    .DESCRIPTION
+        Returns the full type names of all classes that implement IPlugin or inherit
+        from CodeActivity. This includes both plugins with step registrations and
+        those without (like workflow activities).
+
+        Used to determine which plugin types in Dataverse are legitimate (have code)
+        vs orphaned (class was deleted).
+    .PARAMETER DllPath
+        Path to the compiled plugin DLL.
+    .OUTPUTS
+        Array of full type name strings.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DllPath
+    )
+
+    if (-not (Test-Path $DllPath)) {
+        throw "DLL not found: $DllPath"
+    }
+
+    $dllFullPath = (Resolve-Path $DllPath).Path
+    $dllDir = Split-Path $dllFullPath -Parent
+
+    # Create a custom assembly resolver to load dependencies from the same folder
+    $resolveHandler = [System.ResolveEventHandler]{
+        param($sender, $args)
+        $assemblyName = (New-Object System.Reflection.AssemblyName($args.Name)).Name
+        $dllPath = Join-Path $dllDir "$assemblyName.dll"
+        if (Test-Path $dllPath) {
+            return [System.Reflection.Assembly]::LoadFrom($dllPath)
+        }
+        return $null
+    }
+
+    [System.AppDomain]::CurrentDomain.add_AssemblyResolve($resolveHandler)
+
+    try {
+        $assembly = [System.Reflection.Assembly]::LoadFrom($dllFullPath)
+        $typeNames = @()
+
+        foreach ($type in $assembly.GetExportedTypes()) {
+            # Skip abstract classes and interfaces
+            if ($type.IsAbstract -or $type.IsInterface) {
+                continue
+            }
+
+            # Check if type implements IPlugin or inherits from CodeActivity
+            $isPlugin = $false
+
+            # Check interfaces for IPlugin
+            foreach ($iface in $type.GetInterfaces()) {
+                if ($iface.Name -eq "IPlugin" -or $iface.FullName -eq "Microsoft.Xrm.Sdk.IPlugin") {
+                    $isPlugin = $true
+                    break
+                }
+            }
+
+            # Check base types for CodeActivity (workflow activities)
+            if (-not $isPlugin) {
+                $baseType = $type.BaseType
+                while ($baseType -ne $null) {
+                    if ($baseType.Name -eq "CodeActivity" -or $baseType.FullName -like "*CodeActivity") {
+                        $isPlugin = $true
+                        break
+                    }
+                    $baseType = $baseType.BaseType
+                }
+            }
+
+            if ($isPlugin) {
+                $typeNames += $type.FullName
+            }
+        }
+
+        return $typeNames
+    }
+    finally {
+        [System.AppDomain]::CurrentDomain.remove_AssemblyResolve($resolveHandler)
+    }
+}
+
 # =============================================================================
 # JSON Functions
 # =============================================================================
@@ -364,6 +450,11 @@ function ConvertTo-RegistrationJson {
             solution = $asm.solution
             path = $asm.path
             plugins = [array]$formattedPlugins
+        }
+
+        # Add allTypeNames if present (for orphan detection)
+        if ($asm.allTypeNames -and $asm.allTypeNames.Count -gt 0) {
+            $asmCopy | Add-Member -MemberType NoteProperty -Name "allTypeNames" -Value ([array]$asm.allTypeNames)
         }
 
         # Add packagePath for NuGet packages
@@ -474,6 +565,10 @@ function ConvertTo-RegistrationJson {
                         })
                     }
                 })
+            }
+            # Add allTypeNames if present (for orphan detection)
+            if ($asm.allTypeNames -and $asm.allTypeNames.Count -gt 0) {
+                $asmObj | Add-Member -MemberType NoteProperty -Name "allTypeNames" -Value ([array]$asm.allTypeNames)
             }
             # Add packagePath only for NuGet packages
             if ($asm.type -eq "Nuget" -and $asm.packagePath) {
@@ -754,6 +849,86 @@ function Get-PluginType {
     $select = "`$select=plugintypeid,typename,friendlyname"
     $result = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "plugintypes?$filter&$select" -Method GET
     return $result.value | Select-Object -First 1
+}
+
+function Get-PluginTypesForAssembly {
+    <#
+    .SYNOPSIS
+        Gets all plugin types registered for a plugin assembly.
+    .DESCRIPTION
+        Returns all plugin type records associated with the specified assembly.
+        Used to detect orphaned plugin types that exist in Dataverse but not in the assembly.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ApiUrl,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$AuthHeaders,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AssemblyId
+    )
+
+    $filter = "`$filter=_pluginassemblyid_value eq '$AssemblyId'"
+    $select = "`$select=plugintypeid,typename,friendlyname"
+    $result = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "plugintypes?$filter&$select" -Method GET
+    return $result.value
+}
+
+function Get-PluginTypeStepCount {
+    <#
+    .SYNOPSIS
+        Gets the count of steps registered for a plugin type.
+    .DESCRIPTION
+        Returns the number of SDK message processing steps associated with the plugin type.
+        Used to verify a plugin type has no steps before deletion.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ApiUrl,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$AuthHeaders,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PluginTypeId
+    )
+
+    $filter = "`$filter=_eventhandler_value eq '$PluginTypeId'"
+    $select = "`$select=sdkmessageprocessingstepid"
+    $result = Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "sdkmessageprocessingsteps?$filter&$select" -Method GET
+    return @($result.value).Count
+}
+
+function Remove-PluginType {
+    <#
+    .SYNOPSIS
+        Deletes a plugin type from Dataverse.
+    .DESCRIPTION
+        Removes a plugin type record. The plugin type must have no registered steps.
+        Used during plugin removal workflow when a plugin class is removed from an assembly.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ApiUrl,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$AuthHeaders,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PluginTypeId,
+
+        [Parameter()]
+        [switch]$WhatIf
+    )
+
+    if ($WhatIf) {
+        Write-PluginLog "[WhatIf] Would delete plugin type: $PluginTypeId"
+        return $true
+    }
+
+    return Invoke-DataverseApi -ApiUrl $ApiUrl -AuthHeaders $AuthHeaders -Endpoint "plugintypes($PluginTypeId)" -Method DELETE
 }
 
 function Get-SdkMessage {
@@ -1790,6 +1965,7 @@ Export-ModuleMember -Function @(
     'Write-PluginDebug'
     'Get-PluginProjects'
     'Get-PluginRegistrations'
+    'Get-AllPluginTypeNames'
     'ConvertTo-RegistrationJson'
     'Read-RegistrationJson'
     'Get-StepUniqueName'
@@ -1799,6 +1975,9 @@ Export-ModuleMember -Function @(
     'Get-PluginAssembly'
     'Get-PluginPackage'
     'Get-PluginType'
+    'Get-PluginTypesForAssembly'
+    'Get-PluginTypeStepCount'
+    'Remove-PluginType'
     'Get-SdkMessage'
     'Get-SdkMessageFilter'
     'Get-ProcessingStep'
