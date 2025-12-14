@@ -96,7 +96,7 @@ on:
         value: ${{ jobs.deploy.outputs.version }}
       build-succeeded:
         description: 'Whether plugin build succeeded (if enabled)'
-        value: ${{ jobs.deploy.outputs.build_succeeded }}
+        value: ${{ jobs.deploy.outputs.build-succeeded }}
 
 jobs:
   deploy:
@@ -107,7 +107,7 @@ jobs:
       deployed: ${{ steps.import.outputs.imported }}
       skipped: ${{ steps.import.outputs.skipped }}
       version: ${{ steps.import.outputs.import-version }}
-      build_succeeded: ${{ steps.build.outputs.build-succeeded }}
+      build-succeeded: ${{ steps.build.outputs.build-succeeded }}
 
     steps:
       - name: Checkout repository
