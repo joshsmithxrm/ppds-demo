@@ -28,6 +28,8 @@ Step-by-step documentation explaining **how** to perform common tasks.
 | [GETTING_STARTED_GUIDE.md](guides/GETTING_STARTED_GUIDE.md) | Clone, configure, and deploy the demo solution |
 | [ENVIRONMENT_SETUP_GUIDE.md](guides/ENVIRONMENT_SETUP_GUIDE.md) | Power Platform environments, PAC CLI, service principals |
 | [BRANCH_PROTECTION_GUIDE.md](guides/BRANCH_PROTECTION_GUIDE.md) | Configure GitHub branch protection rules |
+| [PLUGIN_REMOVAL_GUIDE.md](guides/PLUGIN_REMOVAL_GUIDE.md) | Two-phase workflow for removing plugin steps |
+| [CLAUDE_MD_GUIDE.md](guides/CLAUDE_MD_GUIDE.md) | Creating effective CLAUDE.md files for Dynamics projects |
 
 ---
 
@@ -40,6 +42,7 @@ Quick-reference material for specifications, patterns, and standards.
 | [PAC_CLI_REFERENCE.md](reference/PAC_CLI_REFERENCE.md) | Common PAC CLI commands and usage |
 | [PLUGIN_COMPONENTS_REFERENCE.md](reference/PLUGIN_COMPONENTS_REFERENCE.md) | Plugin Assemblies vs Plugin Packages |
 | [SOLUTION_STRUCTURE_REFERENCE.md](reference/SOLUTION_STRUCTURE_REFERENCE.md) | Solution folder structure and packaging |
+| [TOOLS_REFERENCE.md](reference/TOOLS_REFERENCE.md) | PowerShell deployment scripts and PPDS.Tools |
 | [WEBRESOURCE_PATTERNS.md](reference/WEBRESOURCE_PATTERNS.md) | JavaScript/TypeScript web resource patterns |
 | [TESTING_PATTERNS.md](reference/TESTING_PATTERNS.md) | Plugin and workflow unit testing patterns |
 | [DOCUMENTATION_STANDARDS.md](reference/DOCUMENTATION_STANDARDS.md) | Documentation file naming and structure |

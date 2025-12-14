@@ -113,6 +113,31 @@ pac solution unpack --zipfile ./exports/MySolution.zip --folder ./solutions/MySo
 pac solution clone --name "MySolution" --outputDirectory ./solutions/MySolution
 ```
 
+### Packagetype Both (Unified Source Control)
+
+This project uses `--packagetype Both` for solution unpacking. This creates a single source folder that can build both managed and unmanaged solutions:
+
+```bash
+# Export both versions from Dataverse
+pac solution export --name "PPDSDemo" --path ./exports/PPDSDemo.zip
+pac solution export --name "PPDSDemo" --path ./exports/PPDSDemo_managed.zip --managed
+
+# Unpack with packagetype Both (critical for this project)
+pac solution unpack \
+    --zipfile ./exports/PPDSDemo.zip \
+    --folder ./solutions/PPDSDemo/src \
+    --packagetype Both \
+    --allowDelete \
+    --allowWrite
+```
+
+**Why packagetype Both?**
+- Single source of truth (no Managed/Unmanaged subfolders)
+- MSBuild project uses Debug=Unmanaged, Release=Managed
+- Cleaner git history and merge conflicts
+
+See [SOLUTION_STRUCTURE_REFERENCE.md](SOLUTION_STRUCTURE_REFERENCE.md) for detailed explanation.
+
 ### Environment Management
 
 ```bash
