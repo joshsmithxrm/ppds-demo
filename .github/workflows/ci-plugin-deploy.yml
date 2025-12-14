@@ -36,7 +36,6 @@ on:
     paths:
       - 'src/Plugins/**'
       - 'src/PluginPackages/**'
-      - 'src/Shared/PPDSDemo.Sdk/**'
 
   # Manual trigger for testing
   workflow_dispatch:
@@ -72,17 +71,14 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup .NET Framework compatibility
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.x'
 
       # Build plugins
-      - name: Build PPDSDemo.Sdk
-        run: dotnet build src/Shared/PPDSDemo.Sdk/PPDSDemo.Sdk.csproj -c Release --nologo
-
       - name: Build PPDSDemo.Plugins
         run: dotnet build src/Plugins/PPDSDemo.Plugins/PPDSDemo.Plugins.csproj -c Release --nologo
 

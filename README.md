@@ -167,7 +167,7 @@ See [docs/strategy/PIPELINE_STRATEGY.md](docs/strategy/PIPELINE_STRATEGY.md) for
 - [CLAUDE.md](CLAUDE.md) - AI-assistable coding patterns
 - [Plugin Components Reference](docs/reference/PLUGIN_COMPONENTS_REFERENCE.md) - Plugin development
 - [Solution Structure Reference](docs/reference/SOLUTION_STRUCTURE_REFERENCE.md) - ALM structure
-- [Plugin Deployment Design](docs/design/PLUGIN_DEPLOYMENT_DESIGN.md) - Deployment patterns
+- [Tools Reference](docs/reference/TOOLS_REFERENCE.md) - Deployment scripts
 
 ## Contributing
 

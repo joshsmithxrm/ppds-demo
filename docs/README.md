@@ -58,4 +58,4 @@ Quick-reference material for specifications, patterns, and standards.
 
 - [Power Platform ALM Documentation](https://learn.microsoft.com/en-us/power-platform/alm/) - Official Microsoft ALM guidance
 - [PAC CLI Reference](https://learn.microsoft.com/en-us/power-platform/developer/cli/reference/) - Official PAC CLI documentation
-- [Power Platform Developer Suite](https://github.com/JoshSmithXRM/Power-Platform-Developer-Suite) - VS Code extension this demo showcases
+- [Power Platform Developer Suite](https://github.com/joshsmithxrm/power-platform-developer-suite) - VS Code extension this demo showcases

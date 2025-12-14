@@ -162,6 +162,6 @@ Workflow activities (classes inheriting from `CodeActivity`) don't have `[Plugin
 
 ## See Also
 
-- [PLUGIN_DEPLOYMENT_DESIGN.md](../design/PLUGIN_DEPLOYMENT_DESIGN.md) - Overall deployment architecture
 - [PLUGIN_COMPONENTS_REFERENCE.md](../reference/PLUGIN_COMPONENTS_REFERENCE.md) - Plugin development patterns
+- [TOOLS_REFERENCE.md](../reference/TOOLS_REFERENCE.md) - Deployment scripts
 - [Microsoft Docs: Register a plug-in](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/register-plug-in)

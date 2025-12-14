@@ -100,7 +100,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: develop
           fetch-depth: 0  # Full history for tagging
@@ -248,7 +248,7 @@ jobs:
 
       - name: Create Pull Request
         if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr == 'true'
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'chore: sync solution from Dev (v${{ steps.version.outputs.new_version }})'

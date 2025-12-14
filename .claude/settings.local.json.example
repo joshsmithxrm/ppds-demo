@@ -42,6 +42,8 @@
       "Bash(git remote:*)",
       "Bash(git fetch:*)",
       "Bash(git checkout:*)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
       "Bash(npm:*)",
       "Bash(npx:*)",
       "Bash(node:*)",

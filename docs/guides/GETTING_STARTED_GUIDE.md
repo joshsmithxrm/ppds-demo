@@ -21,8 +21,8 @@ Before starting, ensure you have:
 ## Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/Power-Platform-Developer-Suite-Demo-Solution.git
-cd Power-Platform-Developer-Suite-Demo-Solution
+git clone https://github.com/joshsmithxrm/ppds-demo.git
+cd ppds-demo
 ```
 
 ---
