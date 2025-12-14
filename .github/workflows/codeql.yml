@@ -52,7 +52,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Detect .NET solution
         id: detect
@@ -68,7 +68,7 @@ jobs:
 
       - name: Initialize CodeQL
         if: steps.detect.outputs.has-solution == 'true'
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: csharp
           # Use security-and-quality for comprehensive analysis
@@ -76,7 +76,7 @@ jobs:
 
       - name: Setup .NET SDK
         if: steps.detect.outputs.has-solution == 'true'
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.x'
 
@@ -88,7 +88,7 @@ jobs:
 
       - name: Perform CodeQL Analysis
         if: steps.detect.outputs.has-solution == 'true'
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:csharp"
 
