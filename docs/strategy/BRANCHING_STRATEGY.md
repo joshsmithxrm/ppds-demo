@@ -351,6 +351,54 @@ gh api repos/OWNER/REPO/rulesets -X POST --input .github/rulesets/main.json
 
 See `.github/rulesets/` for the complete ruleset definitions.
 
+### Automation Bypass for CI/CD
+
+The nightly export workflow commits directly to `develop`, bypassing branch protection. This is **intentional and correct** for the ALM pattern.
+
+#### Why Automation Bypasses Branch Protection
+
+| Concern | Explanation |
+|---------|-------------|
+| "Shouldn't all changes require PR?" | No. PRs are for **human-authored changes**. Automated exports are operational, not developmental. |
+| "What about review?" | QA environment IS the review. Blocking before QA adds delay without adding validation. |
+| "What if bad changes export?" | If someone shouldn't change Dev, fix permissions. Don't slow the feedback loop for everyone. |
+
+#### Where Gates Should Be
+
+```
+Dev → develop → QA       (automated, fast feedback)
+QA  → main    → Prod     (gated, human approval required)
+```
+
+The human gate belongs at **QA → Prod**, not at **Dev → QA**. QA is where you validate changes through testing, not through XML diff review.
+
+#### Configuration by Repository Type
+
+**Organization Repositories (Enterprise):**
+
+Add GitHub Actions to the ruleset bypass list:
+
+1. Repository Settings → Rules → Rulesets → "Develop Branch Rules"
+2. Under "Bypass list", add "GitHub Actions"
+3. Save
+
+**Personal Repositories:**
+
+Use a Personal Access Token (PAT):
+
+1. Create fine-grained PAT with `contents: write` for the repo
+2. Store as `AUTOMATION_TOKEN` repository secret
+3. Workflow uses PAT for checkout: `token: ${{ secrets.AUTOMATION_TOKEN }}`
+
+This is the standard pattern when automation needs to bypass branch protection.
+
+#### What This Enables
+
+- **Nightly exports** commit directly to `develop`
+- **QA deployment** triggers automatically on push
+- **Fast feedback** - issues discovered within 24 hours
+- **Human PRs** (feature branches) still require approval via `GITHUB_TOKEN`
+
 ---
 
 ## Commit Message Convention

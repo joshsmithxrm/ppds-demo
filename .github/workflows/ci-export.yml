@@ -37,6 +37,20 @@
 #   Secrets:
 #     - POWERPLATFORM_CLIENT_SECRET: your-service-principal-secret
 #
+# Repository Secret (for branch protection bypass):
+#   - AUTOMATION_TOKEN: Fine-grained PAT with 'contents: write' permission
+#
+#     Why needed: Branch protection on 'develop' requires PRs for human changes,
+#     but automated exports should commit directly. The PAT bypasses this rule.
+#
+#     Setup:
+#       1. GitHub Settings → Developer settings → Fine-grained tokens
+#       2. Create token with 'contents: write' for this repo only
+#       3. Add as repository secret named AUTOMATION_TOKEN
+#
+#     For organization repos, you can instead add GitHub Actions to the
+#     ruleset bypass list (no PAT needed). See BRANCHING_STRATEGY.md.
+#
 # =============================================================================
 
 name: 'CI: Export from Dev'
@@ -54,9 +68,9 @@ on:
         required: true
         default: 'PPDSDemo'
       create_pr:
-        description: 'Create PR instead of direct commit (required for branch protection)'
+        description: 'Create PR instead of direct commit (optional, for review workflows)'
         required: false
-        default: 'true'
+        default: 'false'
         type: choice
         options:
           - 'true'
@@ -104,6 +118,7 @@ jobs:
         with:
           ref: develop
           fetch-depth: 0  # Full history for tagging
+          token: ${{ secrets.AUTOMATION_TOKEN }}  # PAT to bypass branch protection
 
       - name: Setup PAC CLI
         uses: ./.github/actions/setup-pac-cli
@@ -211,7 +226,7 @@ jobs:
           fi
 
       - name: Commit changes to develop
-        if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr == 'false'
+        if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -232,7 +247,7 @@ jobs:
           git push origin develop
 
       - name: Create git tag
-        if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr == 'false'
+        if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr != 'true'
         run: |
           VERSION="${{ steps.version.outputs.new_version }}"
           TAG_NAME="v${VERSION}"
@@ -247,7 +262,7 @@ jobs:
           git push origin "$TAG_NAME"
 
       - name: Create Pull Request
-        if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr != 'false'
+        if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -293,7 +308,7 @@ jobs:
             echo "| Noise Filtered | ${{ steps.analyze.outputs.noise-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
             echo "| Status | **Committed** |" >> $GITHUB_STEP_SUMMARY
 
-            if [ "${{ github.event.inputs.create_pr }}" == "false" ]; then
+            if [ "${{ github.event.inputs.create_pr }}" != "true" ]; then
               echo "| Git Tag | \`v${{ steps.version.outputs.new_version }}\` |" >> $GITHUB_STEP_SUMMARY
             fi
           else
