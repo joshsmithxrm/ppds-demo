@@ -1,0 +1,14 @@
+<environmentvariabledefinition schemaname="ppds_EnableFeatureX">
+  <defaultvalue>false</defaultvalue>
+  <description default="Toggle to enable/disable Feature X functionality">
+    <label description="Toggle to enable/disable Feature X functionality" languagecode="1033" />
+  </description>
+  <displayname default="Enable Feature X">
+    <label description="Enable Feature X" languagecode="1033" />
+  </displayname>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+  <isrequired>0</isrequired>
+  <secretstore>0</secretstore>
+  <type>100000002</type>
+</environmentvariabledefinition>

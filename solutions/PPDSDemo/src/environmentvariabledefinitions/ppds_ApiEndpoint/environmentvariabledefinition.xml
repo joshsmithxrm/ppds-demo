@@ -1,0 +1,14 @@
+<environmentvariabledefinition schemaname="ppds_ApiEndpoint">
+  <defaultvalue>https://api.example.com</defaultvalue>
+  <description default="External API endpoint URL for demo integrations">
+    <label description="External API endpoint URL for demo integrations" languagecode="1033" />
+  </description>
+  <displayname default="API Endpoint">
+    <label description="API Endpoint" languagecode="1033" />
+  </displayname>
+  <introducedversion>1.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+  <isrequired>0</isrequired>
+  <secretstore>0</secretstore>
+  <type>100000000</type>
+</environmentvariabledefinition>
