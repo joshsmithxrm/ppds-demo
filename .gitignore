@@ -433,3 +433,6 @@ solutions/exports/
 # The metadata XML files ARE committed, but binaries are built fresh each time
 solutions/**/PluginAssemblies/**/*.dll
 solutions/**/pluginpackages/**/package/*.nupkg
+# Draw.io backup files
+*.drawio.bkp
+.$*.drawio.bkp

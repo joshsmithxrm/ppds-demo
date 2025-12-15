@@ -1,9 +1,0 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<EntityRelationships xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <EntityRelationship Name="business_unit_ppds_demorecord" />
-  <EntityRelationship Name="lk_ppds_demorecord_createdby" />
-  <EntityRelationship Name="lk_ppds_demorecord_modifiedby" />
-  <EntityRelationship Name="owner_ppds_demorecord" />
-  <EntityRelationship Name="team_ppds_demorecord" />
-  <EntityRelationship Name="user_ppds_demorecord" />
-</EntityRelationships>
