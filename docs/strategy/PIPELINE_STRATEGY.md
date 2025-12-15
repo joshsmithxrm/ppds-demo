@@ -106,11 +106,80 @@ graph LR
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `ci-export.yml` | Nightly schedule, manual | Export from Dev to develop branch |
-| `cd-qa.yml` | Push to develop, manual | Deploy to QA environment |
+| `ci-build.yml` | Push to develop (solution/plugin paths), manual | Build plugins and pack solution artifact |
+| `ci-plugin-deploy.yml` | Push to develop (plugin paths), manual | Deploy plugins directly to Dev environment |
+| `cd-qa.yml` | After CI Build succeeds, manual | Deploy to QA environment |
 | `cd-prod.yml` | Push to main, manual | Deploy to Production environment |
 | `pr-validate.yml` | PR to develop/main | Validate solution, build code, run Solution Checker |
 | `codeql.yml` | Push, PR, weekly schedule | Security scanning for C# code |
 | `_deploy-solution.yml` | Called by cd-* workflows | Reusable deploy pattern |
+
+---
+
+## CI: Plugin Deployment Workflow
+
+The `ci-plugin-deploy.yml` workflow provides an "inner loop" for plugin development, automatically deploying plugin code to the Dev environment when changes are pushed.
+
+### Why a Separate Plugin Workflow?
+
+Plugin development benefits from a faster feedback loop than solution deployment:
+
+1. **Immediate deployment** - Plugin code changes deploy directly to Dev without waiting for nightly export
+2. **Registration sync** - Plugin steps are registered/updated automatically
+3. **Solution capture** - Changes are captured in the next nightly export to develop branch
+
+### Workflow Flow
+
+```mermaid
+graph LR
+    A[Push to develop] -->|plugin paths only| B[Build Plugins]
+    B --> C[Extract Registrations]
+    C --> D[Auth to Dev]
+    D --> E[Deploy to Dev]
+    E --> F[Nightly Export]
+    F -->|captures changes| G[develop branch]
+```
+
+### Path Filters
+
+The workflow only triggers when plugin code changes:
+
+```yaml
+paths:
+  - 'src/Plugins/**'
+  - 'src/PluginPackages/**'
+```
+
+### Manual Dispatch Options
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `project` | Deploy specific project only | (all) |
+| `force` | Remove orphaned plugin steps | false |
+| `dry_run` | WhatIf mode - show what would happen | false |
+
+### Relationship to Other Workflows
+
+```
+Developer changes plugin code
+    ↓
+ci-plugin-deploy.yml (immediate)
+    → Deploys to Dev environment
+    → Registers/updates plugin steps
+    ↓
+ci-export.yml (nightly)
+    → Captures plugin registrations in solution
+    → Commits to develop branch
+    ↓
+ci-build.yml (on push)
+    → Builds plugins
+    → Packs solution with binaries
+```
+
+**Key insight:** Plugin deployment and solution export are complementary:
+- `ci-plugin-deploy.yml` handles the **runtime registration** (steps, images)
+- `ci-export.yml` captures these registrations into **source control**
+- `ci-build.yml` packages **binaries** into the solution artifact
 
 ---
 

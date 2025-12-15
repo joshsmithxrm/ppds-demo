@@ -191,7 +191,7 @@
         <mxCell id="summary-title" value="Key Flow" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
           <mxGeometry x="490" y="525" width="80" height="20" as="geometry" />
         </mxCell>
-        <mxCell id="summary-text" value="1. Developers customize in Dev environment&lt;br&gt;2. Nightly export syncs changes to develop branch (with noise filtering)&lt;br&gt;3. CI Build creates versioned artifact, auto-deploys to QA&lt;br&gt;4. After QA testing, PR from develop to main triggers validation&lt;br&gt;5. Merge to main deploys to Production and creates release tag" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
+        <mxCell id="summary-text" value="1. Developers customize in Dev environment&lt;br&gt;2. Nightly export syncs changes to develop branch (with noise filtering)&lt;br&gt;3. CI Build creates versioned artifact (PPDSDemo-{run#}.zip), auto-deploys to QA&lt;br&gt;4. Version comparison skips import if QA has same/newer version&lt;br&gt;5. After QA testing, PR from develop to main triggers validation&lt;br&gt;6. Merge to main deploys to Production and creates release tag (v{version})" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
           <mxGeometry x="490" y="545" width="540" height="70" as="geometry" />
         </mxCell>
       </root>
@@ -259,6 +259,9 @@
         <mxCell id="build-trigger" value="Triggers: Push to develop (solution/plugin paths)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#666666;" parent="1" vertex="1">
           <mxGeometry x="570" y="110" width="300" height="20" as="geometry" />
         </mxCell>
+        <mxCell id="build-paths" value="Path filters: solutions/PPDSDemo/src/**, src/Plugins/**, src/PluginPackages/**" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2;fontColor=#999999;" parent="1" vertex="1">
+          <mxGeometry x="570" y="125" width="400" height="15" as="geometry" />
+        </mxCell>
         <mxCell id="bld-step1" value="1. Checkout" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
           <mxGeometry x="580" y="140" width="100" height="35" as="geometry" />
         </mxCell>
@@ -303,6 +306,9 @@
         </mxCell>
         <mxCell id="plugin-trigger" value="Triggers: Push to develop (plugin paths only)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#666666;" parent="1" vertex="1">
           <mxGeometry x="50" y="470" width="300" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="plugin-paths" value="Path filters: src/Plugins/**, src/PluginPackages/**" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2;fontColor=#999999;" parent="1" vertex="1">
+          <mxGeometry x="50" y="485" width="300" height="15" as="geometry" />
         </mxCell>
         <mxCell id="plg-step1" value="1. Build Plugins" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
           <mxGeometry x="60" y="510" width="100" height="40" as="geometry" />
@@ -613,6 +619,173 @@
         </mxCell>
         <mxCell id="output-text" value="Each PR shows a summary with:&lt;br&gt;&lt;br&gt;- Code Build &amp; Tests status (Passed/Failed/Skipped)&lt;br&gt;- Solution Packing status (Managed &amp; Unmanaged sizes)&lt;br&gt;- Solution Checker results (if enabled)&lt;br&gt;  - Critical/High/Medium/Low counts&lt;br&gt;- Overall validation status" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
           <mxGeometry x="590" y="525" width="460" height="90" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="Version Flow" id="version-flow">
+    <mxGraphModel dx="1422" dy="802" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="vf-title" value="Version Flow - How Versions Propagate Through the Pipeline" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="150" y="20" width="800" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-subtitle" value="Version Format: X.X.YYYYMMDD.BuildNumber (e.g., 1.0.20251215.5)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="300" y="55" width="500" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section1" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;" parent="1" vertex="1">
+          <mxGeometry x="40" y="90" width="300" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section1-title" value="1. Version Generation (ci-export.yml)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="50" y="100" width="280" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-file1" value="version.txt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="60" y="140" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-file1-content" value="1.0.20251215.5" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontFamily=Courier New;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="60" y="180" width="120" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-arrow1" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#6c8ebf;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="180" y="160" as="sourcePoint" />
+            <mxPoint x="200" y="160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="vf-file2" value="Solution.xml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="200" y="140" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-file2-content" value="&lt;Version&gt;1.0.20251215.5&lt;/Version&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontFamily=Courier New;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="180" y="180" width="160" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-gen-note" value="Generated: {Major}.{Minor}.{YYYYMMDD}.{run#}" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="60" y="210" width="260" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-gen-note2" value="• Major/Minor from existing version.txt&#xa;• Date stamp from build date&#xa;• Run# from GitHub Actions run number" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#999999;" parent="1" vertex="1">
+          <mxGeometry x="60" y="230" width="260" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;" parent="1" vertex="1">
+          <mxGeometry x="360" y="90" width="300" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section2-title" value="2. Artifact Creation (ci-build.yml)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="370" y="100" width="280" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-artifact" value="PPDSDemo-47.zip" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="410" y="140" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-artifact-note" value="Artifact naming: {Solution}-{run#}.zip" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="390" y="180" width="200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-artifact-contains" value="Contains:&#xa;• Managed solution with plugins&#xa;• Version stamped in Solution.xml&#xa;• 30-day retention" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#999999;" parent="1" vertex="1">
+          <mxGeometry x="380" y="210" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section3" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;opacity=30;" parent="1" vertex="1">
+          <mxGeometry x="680" y="90" width="380" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section3-title" value="3. Version Comparison (cd-qa.yml / cd-prod.yml)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="690" y="100" width="360" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-compare" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="700" y="130" width="340" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-import-ver" value="Import: 1.0.20251215.5" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="710" y="140" width="150" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-target-ver" value="Target: 1.0.20251214.3" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="870" y="140" width="150" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-compare-arrow" value="vs" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="830" y="140" width="40" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-result" value="Import &gt; Target → Proceed with import" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=1;fontColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="710" y="165" width="320" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-skip-note" value="If Target ≥ Import → Skip import (idempotent)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=2;fontColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="710" y="185" width="320" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-compare-detail" value="• Extracts version from packed Solution.xml&#xa;• Queries target env via pac solution list&#xa;• Normalizes to 4-part version (sort -V)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#999999;" parent="1" vertex="1">
+          <mxGeometry x="700" y="210" width="340" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section4" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;opacity=30;" parent="1" vertex="1">
+          <mxGeometry x="40" y="310" width="620" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section4-title" value="4. Release Tagging (cd-prod.yml - after successful deployment)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="50" y="320" width="600" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-tag-flow" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="60" y="350" width="580" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-tag1" value="Read version from&#xa;Solution.xml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="80" y="365" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-tag-arrow1" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#82b366;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="200" y="390" as="sourcePoint" />
+            <mxPoint x="230" y="390" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="vf-tag2" value="Check if tag&#xa;already exists" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="230" y="365" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-tag-arrow2" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#82b366;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="350" y="390" as="sourcePoint" />
+            <mxPoint x="380" y="390" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="vf-tag3" value="Create annotated tag&#xa;v1.0.20251215.5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="380" y="365" width="130" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-tag-arrow3" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#82b366;" parent="1" edge="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="510" y="390" as="sourcePoint" />
+            <mxPoint x="540" y="390" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="vf-tag4" value="Push to origin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="540" y="365" width="80" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-tag-note" value="Tags enable rollback: git checkout v1.0.20251214.3 → rebuild → redeploy" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="60" y="440" width="580" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-tag-note2" value="Only created on push to main (not manual dispatch) and only if deploy succeeded" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#999999;" parent="1" vertex="1">
+          <mxGeometry x="60" y="460" width="580" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section5" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="680" y="310" width="380" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-section5-title" value="Version Scenarios" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="690" y="320" width="200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-scenario-table" value="| Import | Target | Result |&#xa;|--------|--------|--------|&#xa;| 1.0.20251215.5 | 1.0.20251214.3 | Import (newer) |&#xa;| 1.0.20251215.5 | 1.0.20251215.5 | Skip (same) |&#xa;| 1.0.20251215.5 | 1.0.20251216.1 | Skip (older) |&#xa;| 1.0.20251215.5 | not_installed | Import (new) |" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;fontFamily=Courier New;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="700" y="350" width="340" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-rollback-note" value="To force rollback to older version:&#xa;1. Checkout old tag&#xa;2. Update version.txt to newer value&#xa;3. Rebuild and deploy" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="700" y="450" width="340" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-legend" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;dashed=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="530" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="50" y="535" width="60" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-legend-gen" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="50" y="560" width="20" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-legend-gen-text" value="Generation/Build" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="75" y="557" width="100" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-legend-compare" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="180" y="560" width="20" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-legend-compare-text" value="Comparison" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="205" y="557" width="80" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-legend-deploy" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="290" y="560" width="20" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="vf-legend-deploy-text" value="Deploy/Tag" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#333333;" parent="1" vertex="1">
+          <mxGeometry x="315" y="557" width="80" height="20" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
