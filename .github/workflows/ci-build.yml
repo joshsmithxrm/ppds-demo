@@ -124,21 +124,38 @@ jobs:
           solution-folder: solutions/${{ steps.metadata.outputs.solution-name }}/src
 
       # ========================================
-      # Debug: Verify plugin package location
+      # Debug: Verify plugin binaries before pack
       # ========================================
 
-      - name: Verify plugin package structure
-        if: steps.copy-packages.outputs.copied-count != '' && steps.copy-packages.outputs.copied-count != '0'
+      - name: Verify plugin structure before pack
         run: |
-          echo "=== Plugin Package Structure ==="
           SOLUTION_FOLDER="solutions/${{ steps.metadata.outputs.solution-name }}/src"
           
-          echo "Looking in: $SOLUTION_FOLDER/pluginpackages"
-          find "$SOLUTION_FOLDER/pluginpackages" -type f -name "*.nupkg" 2>/dev/null || echo "No .nupkg files found"
+          echo "=== PluginAssemblies Structure ==="
+          if [ -d "$SOLUTION_FOLDER/PluginAssemblies" ]; then
+            echo "PluginAssemblies folder exists"
+            find "$SOLUTION_FOLDER/PluginAssemblies" -type f 2>/dev/null || echo "No files found"
+          else
+            echo "PluginAssemblies folder does NOT exist"
+          fi
           
           echo ""
-          echo "Full structure:"
-          find "$SOLUTION_FOLDER/pluginpackages" -type f 2>/dev/null || echo "No files found"
+          echo "=== Plugin Packages Structure ==="
+          if [ -d "$SOLUTION_FOLDER/pluginpackages" ]; then
+            echo "pluginpackages folder exists"
+            find "$SOLUTION_FOLDER/pluginpackages" -type f 2>/dev/null || echo "No files found"
+          else
+            echo "pluginpackages folder does NOT exist"
+          fi
+          
+          echo ""
+          echo "=== Solution.xml RootComponents (Plugin-related) ==="
+          SOLUTION_XML="$SOLUTION_FOLDER/Other/Solution.xml"
+          if [ -f "$SOLUTION_XML" ]; then
+            grep -E 'type="(90|91|92|93)"' "$SOLUTION_XML" | head -20 || echo "No plugin components found"
+          else
+            echo "Solution.xml not found"
+          fi
 
       # ========================================
       # Pack Solution
@@ -160,12 +177,16 @@ jobs:
       # ========================================
 
       - name: Verify packed solution contents
+        if: success()
         run: |
           echo "=== Packed Solution Contents ==="
           SOLUTION_ZIP="${{ steps.pack.outputs.solution-path }}"
           echo "Solution zip: $SOLUTION_ZIP"
           echo ""
-          echo "Plugin package files in zip:"
+          echo "PluginAssemblies in zip:"
+          unzip -l "$SOLUTION_ZIP" | grep -i "PluginAssemblies" || echo "No PluginAssemblies entries found"
+          echo ""
+          echo "Plugin packages in zip:"
           unzip -l "$SOLUTION_ZIP" | grep -i "pluginpackage" || echo "No pluginpackage entries found"
           echo ""
           echo "All files in zip:"
