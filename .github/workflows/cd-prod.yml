@@ -118,7 +118,7 @@ jobs:
 
       - name: Download artifact (specific run)
         if: steps.source.outputs.run-id != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ steps.source.outputs.solution-name }}-${{ github.event.inputs.artifact_run_id }}
           path: ./artifact
@@ -127,7 +127,7 @@ jobs:
 
       - name: Download latest artifact (from main)
         if: steps.source.outputs.run-id == ''
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@v11
         with:
           workflow: ci-build.yml
           branch: main

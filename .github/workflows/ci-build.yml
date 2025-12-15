@@ -212,7 +212,7 @@ jobs:
       # ========================================
 
       - name: Upload solution artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.metadata.outputs.artifact-name }}
           path: ${{ steps.pack.outputs.solution-path }}
