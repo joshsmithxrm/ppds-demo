@@ -250,9 +250,8 @@ jobs:
 
               # Show classic assembly copy status
               if [ -n "${{ steps.build.outputs.classic-assembly-path }}" ]; then
-                ASSEMBLY_COUNT="${{ steps.copy-assemblies.outputs.copied-count }}"
-                if [ -n "$ASSEMBLY_COUNT" ] && [ "$ASSEMBLY_COUNT" != "0" ]; then
-                  echo "| Classic Assembly | Copied to $ASSEMBLY_COUNT location(s) |" >> $GITHUB_STEP_SUMMARY
+                if [ -n "${{ steps.copy-assemblies.outputs.target-path }}" ]; then
+                  echo "| Classic Assembly | ✅ Copied |" >> $GITHUB_STEP_SUMMARY
                 else
                   echo "| Classic Assembly | ⚠️ Not copied |" >> $GITHUB_STEP_SUMMARY
                 fi
@@ -260,9 +259,8 @@ jobs:
 
               # Show plugin package copy status
               if [ -n "${{ steps.build.outputs.plugin-package-path }}" ]; then
-                PACKAGE_COUNT="${{ steps.copy-packages.outputs.copied-count }}"
-                if [ -n "$PACKAGE_COUNT" ] && [ "$PACKAGE_COUNT" != "0" ]; then
-                  echo "| Plugin Package | Copied to $PACKAGE_COUNT location(s) |" >> $GITHUB_STEP_SUMMARY
+                if [ -n "${{ steps.copy-packages.outputs.target-path }}" ]; then
+                  echo "| Plugin Package | ✅ Copied |" >> $GITHUB_STEP_SUMMARY
                 else
                   echo "| Plugin Package | ⚠️ Not copied |" >> $GITHUB_STEP_SUMMARY
                 fi

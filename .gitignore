@@ -428,3 +428,8 @@ settings.local.json
 # Power Platform solution exports (zip files are build artifacts)
 solutions/exports/
 *.zip
+
+# Plugin binaries in solution folder (built and copied during CI, not committed)
+# The metadata XML files ARE committed, but binaries are built fresh each time
+solutions/**/PluginAssemblies/**/*.dll
+solutions/**/pluginpackages/**/package/*.nupkg
