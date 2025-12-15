@@ -192,7 +192,6 @@ jobs:
       # ========================================
 
       - name: Verify packed solution contents
-        if: success()
         run: |
           echo "=== Packed Solution Contents ==="
           SOLUTION_ZIP="${{ steps.pack.outputs.solution-path }}"

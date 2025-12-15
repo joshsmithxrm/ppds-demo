@@ -101,15 +101,24 @@ runs:
           exit 1
         fi
 
-        # Find matching folder (e.g., PPDSDemoPlugins-8F9EA877-77D9-F011-8543-000D3A3B9CBA)
-        TARGET_FOLDER=$(find "$PLUGIN_ASSEMBLIES_DIR" -maxdepth 1 -type d -name "${FOLDER_PATTERN}-*" | head -1)
+        # Find matching folder(s) (e.g., PPDSDemoPlugins-8F9EA877-77D9-F011-8543-000D3A3B9CBA)
+        mapfile -t TARGET_FOLDERS < <(find "$PLUGIN_ASSEMBLIES_DIR" -maxdepth 1 -type d -name "${FOLDER_PATTERN}-*")
 
-        if [ -z "$TARGET_FOLDER" ]; then
+        if [ "${#TARGET_FOLDERS[@]}" -eq 0 ]; then
           echo "::error::No folder matching pattern '${FOLDER_PATTERN}-*' found in $PLUGIN_ASSEMBLIES_DIR"
           echo "Available folders:"
           ls -la "$PLUGIN_ASSEMBLIES_DIR"
           exit 1
         fi
+
+        if [ "${#TARGET_FOLDERS[@]}" -gt 1 ]; then
+          echo "::error::Found multiple folders matching pattern '${FOLDER_PATTERN}-*'. Expected exactly one."
+          echo "Matching folders found:"
+          printf '%s\n' "${TARGET_FOLDERS[@]}"
+          exit 1
+        fi
+
+        TARGET_FOLDER="${TARGET_FOLDERS[0]}"
 
         echo "Found target folder: $TARGET_FOLDER"
 
