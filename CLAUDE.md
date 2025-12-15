@@ -193,3 +193,15 @@ See [BRANCHING_STRATEGY.md](docs/strategy/BRANCHING_STRATEGY.md) for details.
 - [ENVIRONMENT_SETUP_GUIDE.md](docs/guides/ENVIRONMENT_SETUP_GUIDE.md) - Environment configuration
 - [BRANCH_PROTECTION_GUIDE.md](docs/guides/BRANCH_PROTECTION_GUIDE.md) - GitHub rulesets
 - [PLUGIN_REMOVAL_GUIDE.md](docs/guides/PLUGIN_REMOVAL_GUIDE.md) - Removing plugin steps
+
+---
+
+## Decision Presentation
+
+When presenting choices or asking questions:
+1. **Lead with your recommendation** and rationale
+2. **List alternatives considered** and why they're not preferred
+3. **Ask for confirmation**, not open-ended input
+
+❌ "What testing approach should we use?"
+✅ "I recommend X because Y. Alternatives considered: A (rejected because B), C (rejected because D). Do you agree?"
