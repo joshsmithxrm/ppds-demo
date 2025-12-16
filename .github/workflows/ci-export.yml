@@ -15,10 +15,10 @@
 #
 # Flow:
 #   1. Connect to Dev environment
-#   2. Export managed and unmanaged solutions
-#   3. Unpack to source control format
-#   4. Analyze changes (filter noise from real changes)
-#   5. Update solution version if real changes detected
+#   2. Generate new version number
+#   3. Set version in Dev environment (pac solution online-version)
+#   4. Export solutions (already contains correct version)
+#   5. Analyze changes (filter noise from real changes)
 #   6. Commit changes to develop branch (or create PR)
 #
 # The commit to develop will trigger cd-qa.yml for automatic QA deployment.
@@ -131,6 +131,35 @@ jobs:
           client-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
           client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
 
+      - name: Generate version
+        id: version
+        run: |
+          # Read current version or initialize
+          if [ -f "${{ env.VERSION_FILE }}" ]; then
+            CURRENT_VERSION=$(cat "${{ env.VERSION_FILE }}")
+            echo "Current version: $CURRENT_VERSION"
+            # Extract major.minor
+            MAJOR_MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f1-2)
+          else
+            echo "No version file found, initializing at 1.0"
+            MAJOR_MINOR="1.0"
+          fi
+
+          # Generate new version: major.minor.YYYYMMDD.runNumber
+          DATE=$(date -u +%Y%m%d)
+          NEW_VERSION="${MAJOR_MINOR}.${DATE}.${{ github.run_number }}"
+
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "major_minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
+
+      - name: Set solution version in Dev environment
+        run: |
+          echo "Setting solution version to ${{ steps.version.outputs.new_version }} in Dev environment"
+          pac solution online-version \
+            --solution-name "${{ env.SOLUTION_NAME }}" \
+            --solution-version "${{ steps.version.outputs.new_version }}"
+
       - name: Export solution
         uses: ./.github/actions/export-solution
         with:
@@ -179,29 +208,6 @@ jobs:
           echo "No real changes detected, resetting staged changes"
           git reset HEAD
 
-      - name: Generate version
-        id: version
-        if: steps.has_changes.outputs.result == 'true'
-        run: |
-          # Read current version or initialize
-          if [ -f "${{ env.VERSION_FILE }}" ]; then
-            CURRENT_VERSION=$(cat "${{ env.VERSION_FILE }}")
-            echo "Current version: $CURRENT_VERSION"
-            # Extract major.minor
-            MAJOR_MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f1-2)
-          else
-            echo "No version file found, initializing at 1.0"
-            MAJOR_MINOR="1.0"
-          fi
-
-          # Generate new version: major.minor.YYYYMMDD.runNumber
-          DATE=$(date -u +%Y%m%d)
-          NEW_VERSION="${MAJOR_MINOR}.${DATE}.${{ github.run_number }}"
-
-          echo "New version: $NEW_VERSION"
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "major_minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
-
       - name: Update version file
         if: steps.has_changes.outputs.result == 'true'
         run: |
@@ -209,21 +215,6 @@ jobs:
           mkdir -p "$(dirname "${{ env.VERSION_FILE }}")"
           echo "${{ steps.version.outputs.new_version }}" > "${{ env.VERSION_FILE }}"
           git add "${{ env.VERSION_FILE }}"
-
-      - name: Stamp version into Solution.xml
-        if: steps.has_changes.outputs.result == 'true'
-        run: |
-          # Update version in Solution.xml (flat structure from packagetype Both)
-          VERSION="${{ steps.version.outputs.new_version }}"
-          SOLUTION_XML="${{ env.SOLUTION_BASE_FOLDER }}/Other/Solution.xml"
-
-          if [ -f "$SOLUTION_XML" ]; then
-            echo "Updating version in: $SOLUTION_XML"
-            sed -i "s|<Version>[^<]*</Version>|<Version>$VERSION</Version>|g" "$SOLUTION_XML"
-            git add "$SOLUTION_XML"
-          else
-            echo "Warning: Solution.xml not found at $SOLUTION_XML"
-          fi
 
       - name: Commit changes to develop
         if: steps.has_changes.outputs.result == 'true' && github.event.inputs.create_pr != 'true'
