@@ -19,6 +19,20 @@
 #       output-folder: solutions/PPDSDemo/src
 #
 # =============================================================================
+# KNOWN ISSUE: PAC CLI --allowDelete Bug on Linux
+# =============================================================================
+# PAC CLI's --allowDelete flag does not work correctly on Linux/Ubuntu runners.
+# The CLI reports "X unnecessary files, Deleting files..." but does NOT actually
+# delete them. This causes removed solution components (plugins, entities, etc.)
+# to remain in the repo after export.
+#
+# Bug report: https://github.com/microsoft/powerplatform-build-tools/issues/448
+# Confirmed affected: PAC CLI 1.25.5 through 1.51.1 (and likely later versions)
+# Platform: Linux/Ubuntu (works correctly on Windows)
+#
+# Workaround: We delete the solution folder before unpack to ensure a clean state.
+# If unpack fails, we restore the folder from git to prevent data loss.
+# =============================================================================
 
 name: 'Export Solution'
 description: 'Export and unpack Power Platform solution from environment'
@@ -75,17 +89,55 @@ runs:
           --managed true \
           --overwrite
 
-    - name: Unpack with packagetype Both
+    # =========================================================================
+    # WORKAROUND: Clear folder before unpack (PAC CLI Linux bug)
+    # =========================================================================
+    # See header comments for details on the --allowDelete bug.
+    # We delete the folder to ensure removed components don't persist.
+    # =========================================================================
+    - name: Clear solution folder before unpack
+      shell: bash
+      run: |
+        if [ -d "${{ inputs.output-folder }}" ]; then
+          echo "Clearing solution folder for clean unpack..."
+          echo "(Workaround for PAC CLI --allowDelete bug on Linux)"
+          rm -rf "${{ inputs.output-folder }}"
+        fi
+
+    - name: Unpack solution
       shell: bash
       run: |
         echo "Unpacking both managed and unmanaged to: ${{ inputs.output-folder }}"
+
+        # Run unpack and capture success/failure
+        # We still pass --allowDelete in case Microsoft fixes the bug
         pac solution unpack \
           --zipfile "${{ inputs.temp-folder }}/${{ inputs.solution-name }}.zip" \
           --folder "${{ inputs.output-folder }}" \
           --packagetype Both \
           --processCanvasApps \
           --allowDelete \
-          --allowWrite
+          --allowWrite \
+        && UNPACK_OK=true || UNPACK_OK=false
+
+        # Handle unpack failure - restore folder from git
+        if [ "$UNPACK_OK" != "true" ]; then
+          echo "::error::PAC CLI unpack failed"
+          echo "Attempting to restore solution folder from git..."
+          git checkout -- "${{ inputs.output-folder }}" 2>/dev/null || echo "Note: Cannot restore from git (may be first export)"
+          exit 1
+        fi
+
+        # Validate unpack produced valid output
+        SOLUTION_XML="${{ inputs.output-folder }}/Other/Solution.xml"
+        if [ ! -f "$SOLUTION_XML" ]; then
+          echo "::error::Unpack produced invalid output - Solution.xml not found"
+          echo "Attempting to restore solution folder from git..."
+          git checkout -- "${{ inputs.output-folder }}" 2>/dev/null || echo "Note: Cannot restore from git (may be first export)"
+          exit 1
+        fi
+
+        echo "Unpack completed and validated successfully"
 
     - name: Clean up temporary zip files
       shell: bash

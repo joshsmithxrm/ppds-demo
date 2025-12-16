@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<SdkMessageProcessingStep Name="PPDSDemo.PluginPackage.AccountAuditLogPlugin: Update of account" SdkMessageProcessingStepId="{46dd40a1-77d9-f011-8543-000d3a3b9cba}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<SdkMessageProcessingStep Name="PPDSDemo.PluginPackage.AccountAuditLogPlugin: Update of account" SdkMessageProcessingStepId="{dc9dfbce-46da-f011-8543-000d3a3b9cba}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <SdkMessageId>20bebb1b-ea3e-db11-86a7-000a3a5473e8</SdkMessageId>
   <PluginTypeExportKey>EF0D269A9BD12B5A453F8C3611E31C4CBED1AAD6E9D7A91CF5437008925F459E</PluginTypeExportKey>
   <PrimaryEntity>account</PrimaryEntity>
@@ -16,7 +16,7 @@
   <IntroducedVersion>1.0</IntroducedVersion>
   <SdkMessageProcessingStepImages>
     <SdkMessageProcessingStepImage Name="PreImage">
-      <SdkMessageProcessingStepImageId>{49dd40a1-77d9-f011-8543-000d3a3b9cba}</SdkMessageProcessingStepImageId>
+      <SdkMessageProcessingStepImageId>{df9dfbce-46da-f011-8543-000d3a3b9cba}</SdkMessageProcessingStepImageId>
       <Attributes>name,telephone1,revenue</Attributes>
       <EntityAlias>PreImage</EntityAlias>
       <ImageType>0</ImageType>
