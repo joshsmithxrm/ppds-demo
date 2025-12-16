@@ -75,6 +75,17 @@ runs:
           --managed true \
           --overwrite
 
+    - name: Debug - List plugin files BEFORE unpack
+      shell: bash
+      run: |
+        echo "=== FILES BEFORE UNPACK ==="
+        echo "PluginAssemblies:"
+        find "${{ inputs.output-folder }}/PluginAssemblies" -type f 2>/dev/null || echo "(folder doesn't exist)"
+        echo "pluginpackages:"
+        find "${{ inputs.output-folder }}/pluginpackages" -type f 2>/dev/null || echo "(folder doesn't exist)"
+        echo "SdkMessageProcessingSteps:"
+        find "${{ inputs.output-folder }}/SdkMessageProcessingSteps" -type f 2>/dev/null || echo "(folder doesn't exist)"
+
     - name: Unpack with packagetype Both
       shell: bash
       run: |
@@ -86,6 +97,17 @@ runs:
           --processCanvasApps \
           --allowDelete \
           --allowWrite
+
+    - name: Debug - List plugin files AFTER unpack
+      shell: bash
+      run: |
+        echo "=== FILES AFTER UNPACK ==="
+        echo "PluginAssemblies:"
+        find "${{ inputs.output-folder }}/PluginAssemblies" -type f 2>/dev/null || echo "(folder doesn't exist)"
+        echo "pluginpackages:"
+        find "${{ inputs.output-folder }}/pluginpackages" -type f 2>/dev/null || echo "(folder doesn't exist)"
+        echo "SdkMessageProcessingSteps:"
+        find "${{ inputs.output-folder }}/SdkMessageProcessingSteps" -type f 2>/dev/null || echo "(folder doesn't exist)"
 
     - name: Clean up temporary zip files
       shell: bash
