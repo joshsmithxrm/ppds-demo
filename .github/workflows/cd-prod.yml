@@ -112,7 +112,7 @@ jobs:
             echo "Using artifact from specified run: $RUN_ID"
             echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
           else
-            echo "Will find latest CI Build artifact from main branch"
+            echo "Will find latest CI Build artifact from develop branch"
             echo "run-id=" >> $GITHUB_OUTPUT
           fi
 
@@ -125,12 +125,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ steps.source.outputs.run-id }}
 
-      - name: Download latest artifact (from main)
+      - name: Download latest artifact (from develop)
         if: steps.source.outputs.run-id == ''
         uses: dawidd6/action-download-artifact@v11
         with:
           workflow: ci-build.yml
-          branch: main
+          branch: develop
           name_is_regexp: true
           name: ${{ steps.source.outputs.solution-name }}-.*
           path: ./artifact
