@@ -161,10 +161,10 @@ jobs:
           fi
 
       - name: Setup PAC CLI
-        uses: ./.github/actions/setup-pac-cli
+        uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v2
 
       - name: Authenticate to Prod environment
-        uses: ./.github/actions/pac-auth
+        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v2
         with:
           environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
           tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
@@ -187,7 +187,7 @@ jobs:
 
       - name: Import solution
         id: import
-        uses: ./.github/actions/import-solution
+        uses: joshsmithxrm/ppds-alm/.github/actions/import-solution@v2
         with:
           solution-path: ${{ steps.locate.outputs.solution-path }}
           solution-name: ${{ steps.source.outputs.solution-name }}

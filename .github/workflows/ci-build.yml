@@ -97,7 +97,7 @@ jobs:
       - name: Build .NET solution
         id: dotnet-build
         if: steps.detect-dotnet.outputs.has-solution == 'true'
-        uses: ./.github/actions/build-solution
+        uses: joshsmithxrm/ppds-alm/.github/actions/build-solution@v2
         with:
           solution-path: ${{ steps.detect-dotnet.outputs.solution-path }}
           configuration: Release
@@ -110,7 +110,7 @@ jobs:
       - name: Copy plugin assemblies (classic)
         id: copy-assemblies
         if: steps.dotnet-build.outputs.build-succeeded == 'true' && steps.dotnet-build.outputs.classic-assembly-path != ''
-        uses: ./.github/actions/copy-plugin-assemblies
+        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-assemblies@v2
         with:
           source-assembly: ${{ steps.dotnet-build.outputs.classic-assembly-path }}
           solution-folder: solutions/${{ steps.metadata.outputs.solution-name }}/src
@@ -118,7 +118,7 @@ jobs:
       - name: Copy plugin packages (modern)
         id: copy-packages
         if: steps.dotnet-build.outputs.build-succeeded == 'true' && steps.dotnet-build.outputs.plugin-package-path != ''
-        uses: ./.github/actions/copy-plugin-packages
+        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-packages@v2
         with:
           source-package: ${{ steps.dotnet-build.outputs.plugin-package-path }}
           solution-folder: solutions/${{ steps.metadata.outputs.solution-name }}/src
@@ -177,11 +177,11 @@ jobs:
       # ========================================
 
       - name: Setup PAC CLI
-        uses: ./.github/actions/setup-pac-cli
+        uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v2
 
       - name: Pack solution (Managed)
         id: pack
-        uses: ./.github/actions/pack-solution
+        uses: joshsmithxrm/ppds-alm/.github/actions/pack-solution@v2
         with:
           solution-folder: solutions/${{ steps.metadata.outputs.solution-name }}/src
           solution-name: ${{ steps.metadata.outputs.solution-name }}
