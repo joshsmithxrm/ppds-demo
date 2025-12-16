@@ -93,11 +93,11 @@ jobs:
 
       # Setup PAC CLI
       - name: Setup PAC CLI
-        uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v1
 
       # Authenticate to Dev environment
       - name: Authenticate to Dev environment
-        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v1
         with:
           environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
           tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}

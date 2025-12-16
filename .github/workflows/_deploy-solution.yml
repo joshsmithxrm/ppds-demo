@@ -143,7 +143,7 @@ jobs:
       - name: Build .NET solution
         id: build
         if: inputs.build-plugins == true && steps.detect-dotnet.outputs.has-solution == 'true'
-        uses: joshsmithxrm/ppds-alm/.github/actions/build-solution@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/build-solution@v1
         with:
           solution-path: ${{ steps.detect-dotnet.outputs.solution-path }}
           configuration: Release
@@ -152,7 +152,7 @@ jobs:
       - name: Copy plugin assemblies (classic)
         id: copy-assemblies
         if: inputs.build-plugins == true && steps.build.outputs.build-succeeded == 'true' && steps.build.outputs.classic-assembly-path != ''
-        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-assemblies@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-assemblies@v1
         with:
           source-assembly: ${{ steps.build.outputs.classic-assembly-path }}
           solution-folder: solutions/${{ inputs.solution-name }}/src
@@ -160,7 +160,7 @@ jobs:
       - name: Copy plugin packages (modern)
         id: copy-packages
         if: inputs.build-plugins == true && steps.build.outputs.build-succeeded == 'true' && steps.build.outputs.plugin-package-path != ''
-        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-packages@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-packages@v1
         with:
           source-package: ${{ steps.build.outputs.plugin-package-path }}
           solution-folder: solutions/${{ inputs.solution-name }}/src
@@ -201,10 +201,10 @@ jobs:
       # ========================================
 
       - name: Setup PAC CLI
-        uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v1
 
       - name: Authenticate to ${{ inputs.environment-name }} environment
-        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v1
         with:
           environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
           tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
@@ -213,7 +213,7 @@ jobs:
 
       - name: Pack solution (Managed)
         id: pack
-        uses: joshsmithxrm/ppds-alm/.github/actions/pack-solution@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/pack-solution@v1
         with:
           solution-folder: ${{ inputs.solution-folder }}
           solution-name: ${{ inputs.solution-name }}
@@ -221,7 +221,7 @@ jobs:
 
       - name: Import solution
         id: import
-        uses: joshsmithxrm/ppds-alm/.github/actions/import-solution@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/import-solution@v1
         with:
           solution-path: ${{ steps.pack.outputs.solution-path }}
           solution-name: ${{ inputs.solution-name }}

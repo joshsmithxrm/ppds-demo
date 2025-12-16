@@ -187,7 +187,7 @@ jobs:
       - name: Build .NET solution
         id: build
         if: steps.detect.outputs.has-solution == 'true'
-        uses: joshsmithxrm/ppds-alm/.github/actions/build-solution@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/build-solution@v1
         with:
           solution-path: ${{ steps.detect.outputs.solution-path }}
           configuration: Release
@@ -216,7 +216,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup PAC CLI
-        uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v1
 
       # Build and copy plugin components if build succeeded
       - name: Setup .NET SDK
@@ -228,28 +228,28 @@ jobs:
       - name: Build .NET solution
         id: build-local
         if: needs.build-code.outputs.build-succeeded == 'true'
-        uses: joshsmithxrm/ppds-alm/.github/actions/build-solution@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/build-solution@v1
         with:
           configuration: Release
           run-tests: 'false'
 
       - name: Copy plugin assemblies (classic)
         if: needs.build-code.outputs.build-succeeded == 'true' && steps.build-local.outputs.classic-assembly-path != ''
-        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-assemblies@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-assemblies@v1
         with:
           source-assembly: ${{ steps.build-local.outputs.classic-assembly-path }}
           solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
 
       - name: Copy plugin packages (modern)
         if: needs.build-code.outputs.build-succeeded == 'true' && steps.build-local.outputs.plugin-package-path != ''
-        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-packages@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/copy-plugin-packages@v1
         with:
           source-package: ${{ steps.build-local.outputs.plugin-package-path }}
           solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
 
       - name: Validate managed solution can be packed
         id: pack-managed
-        uses: joshsmithxrm/ppds-alm/.github/actions/pack-solution@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/pack-solution@v1
         with:
           solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
           solution-name: ${{ env.SOLUTION_NAME }}
@@ -258,7 +258,7 @@ jobs:
 
       - name: Validate unmanaged solution can be packed
         id: pack-unmanaged
-        uses: joshsmithxrm/ppds-alm/.github/actions/pack-solution@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/pack-solution@v1
         with:
           solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
           solution-name: ${{ env.SOLUTION_NAME }}
@@ -300,7 +300,7 @@ jobs:
       - name: Authenticate for Solution Checker
         id: auth
         if: env.RUN_CHECKER == 'true' && vars.DATAVERSE_ENV_URL != ''
-        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v1
         with:
           environment-url: ${{ vars.DATAVERSE_ENV_URL }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -311,7 +311,7 @@ jobs:
       - name: Run Solution Checker
         id: check
         if: env.RUN_CHECKER == 'true' && steps.auth.outcome == 'success'
-        uses: joshsmithxrm/ppds-alm/.github/actions/check-solution@v2
+        uses: joshsmithxrm/ppds-alm/.github/actions/check-solution@v1
         with:
           solution-path: ${{ steps.pack-managed.outputs.solution-path }}
           fail-on-level: ${{ env.CHECKER_LEVEL }}
