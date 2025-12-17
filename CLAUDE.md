@@ -2,7 +2,7 @@
 
 **Reference implementation for Dynamics 365 / Dataverse projects.**
 
-**Part of the PPDS Ecosystem** - See `C:\VS\ppds\CLAUDE.md` for cross-project context.
+**Part of the PPDS Ecosystem** - See `../CLAUDE.md` for cross-project context.
 
 ---
 
