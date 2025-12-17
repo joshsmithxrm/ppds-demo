@@ -121,10 +121,10 @@ jobs:
           token: ${{ secrets.AUTOMATION_TOKEN }}  # PAT to bypass branch protection
 
       - name: Setup PAC CLI
-        uses: ./.github/actions/setup-pac-cli
+        uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v1
 
       - name: Authenticate to Dev environment
-        uses: ./.github/actions/pac-auth
+        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v1
         with:
           environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
           tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
@@ -163,7 +163,7 @@ jobs:
           echo "Version set successfully"
 
       - name: Export solution
-        uses: ./.github/actions/export-solution
+        uses: joshsmithxrm/ppds-alm/.github/actions/export-solution@v1
         with:
           solution-name: ${{ env.SOLUTION_NAME }}
           output-folder: ${{ env.SOLUTION_BASE_FOLDER }}
@@ -175,7 +175,7 @@ jobs:
       - name: Analyze changes for noise
         id: analyze
         if: github.event.inputs.skip_noise_filter != 'true'
-        uses: ./.github/actions/analyze-changes
+        uses: joshsmithxrm/ppds-alm/.github/actions/analyze-changes@v1
         with:
           solution-folder: ${{ env.SOLUTION_BASE_FOLDER }}
           debug: ${{ github.event.inputs.debug || 'false' }}

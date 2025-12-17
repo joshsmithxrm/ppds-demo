@@ -1,10 +1,12 @@
-# CLAUDE.md
+# CLAUDE.md - ppds-demo
 
-**Essential rules for AI assistants working on Dynamics 365 / Dataverse projects.**
+**Reference implementation for Dynamics 365 / Dataverse projects.**
+
+**Part of the PPDS Ecosystem** - See `../CLAUDE.md` for cross-project context.
 
 ---
 
-## Solution Context
+## 📊 Solution Context
 
 | Property | Value |
 |----------|-------|
@@ -16,7 +18,7 @@
 
 ---
 
-## NEVER (Non-Negotiable)
+## 🚫 NEVER
 
 | Rule | Why |
 |------|-----|
@@ -33,7 +35,7 @@
 
 ---
 
-## ALWAYS (Required Patterns)
+## ✅ ALWAYS
 
 | Rule | Why |
 |------|-----|
@@ -48,9 +50,10 @@
 
 ---
 
-## Error Handling Pattern
+## 💻 Error Handling Pattern
 
 ```csharp
+// ✅ Correct - Full error handling with tracing
 public void Execute(IServiceProvider serviceProvider)
 {
     var tracingService = (ITracingService)serviceProvider.GetService(typeof(ITracingService));
@@ -59,9 +62,7 @@ public void Execute(IServiceProvider serviceProvider)
     try
     {
         tracingService.Trace("Plugin started: {0}", context.MessageName);
-
         // Plugin logic here
-
         tracingService.Trace("Plugin completed successfully");
     }
     catch (InvalidPluginExecutionException)
@@ -75,11 +76,24 @@ public void Execute(IServiceProvider serviceProvider)
             $"An error occurred. Contact support with timestamp: {DateTime.UtcNow:O}", ex);
     }
 }
+
+// ❌ Wrong - No tracing, swallows exceptions
+public void Execute(IServiceProvider serviceProvider)
+{
+    try
+    {
+        // Plugin logic
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(ex.Message); // Blocked in sandbox!
+    }
+}
 ```
 
 ---
 
-## When to Use What
+## 🎯 When to Use What
 
 | Scenario | Use | Why |
 |----------|-----|-----|
@@ -92,7 +106,7 @@ public void Execute(IServiceProvider serviceProvider)
 
 ---
 
-## Naming Conventions
+## 📛 Naming Conventions
 
 Dataverse uses two name formats for schema objects:
 - **Logical Name**: Always lowercase (`ppds_customerrecord`)
@@ -114,7 +128,7 @@ Dataverse uses two name formats for schema objects:
 
 ---
 
-## Solution Structure
+## 📁 Solution Structure
 
 ```
 solutions/PPDSDemo/
@@ -136,7 +150,7 @@ src/
 
 ---
 
-## Common Commands
+## 🛠️ Common Commands
 
 ```bash
 # Build plugins
@@ -159,7 +173,7 @@ pac modelbuilder build --outdirectory src/Entities/PPDSDemo.Entities
 
 ---
 
-## Git Workflow
+## 🔀 Git Workflow
 
 | Flow | Merge Strategy | Why |
 |------|----------------|-----|
@@ -169,11 +183,9 @@ pac modelbuilder build --outdirectory src/Entities/PPDSDemo.Entities
 
 **Automated CI/CD:** Exports from Dev commit to `develop` automatically. Merges to `develop` deploy to QA. Merges to `main` deploy to Prod.
 
-See [BRANCHING_STRATEGY.md](docs/strategy/BRANCHING_STRATEGY.md) for details.
-
 ---
 
-## Reference Documentation
+## 📚 Reference Documentation
 
 ### Strategy (Why)
 - [ALM_OVERVIEW.md](docs/strategy/ALM_OVERVIEW.md) - ALM philosophy and approach
@@ -196,7 +208,7 @@ See [BRANCHING_STRATEGY.md](docs/strategy/BRANCHING_STRATEGY.md) for details.
 
 ---
 
-## Decision Presentation
+## ⚖️ Decision Presentation
 
 When presenting choices or asking questions:
 1. **Lead with your recommendation** and rationale
