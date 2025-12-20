@@ -1,83 +1,39 @@
-using Microsoft.Crm.Sdk.Messages;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using PPDS.Dataverse.DependencyInjection;
-using PPDS.Dataverse.Pooling;
+using System.CommandLine;
+using PPDS.Dataverse.Demo.Commands;
 
-Console.WriteLine("PPDS.Dataverse Connection Pool Demo");
-Console.WriteLine("====================================");
-Console.WriteLine();
+// PPDS.Dataverse Demo CLI
+// Demonstrates connection pooling, bulk operations, and data migration workflows.
 
-// Host.CreateDefaultBuilder automatically includes:
-// - appsettings.json
-// - appsettings.{Environment}.json
-// - User secrets (when DOTNET_ENVIRONMENT=Development)
-// - Environment variables
-var host = Host.CreateDefaultBuilder(args)
-    .ConfigureServices((context, services) =>
-    {
-        services.AddDataverseConnectionPool(context.Configuration);
-    })
-    .Build();
-
-var pool = host.Services.GetRequiredService<IDataverseConnectionPool>();
-
-// Validate configuration
-if (!pool.IsEnabled)
+var rootCommand = new RootCommand("PPDS.Dataverse Demo - Connection pool and data migration demos")
 {
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine("Error: Connection pool is not enabled.");
-    Console.WriteLine();
-    Console.ResetColor();
-    Console.WriteLine("Configure using .NET User Secrets (recommended):");
-    Console.WriteLine();
-    Console.ForegroundColor = ConsoleColor.DarkGray;
-    Console.WriteLine("  dotnet user-secrets set \"Dataverse:Connections:0:Name\" \"Primary\"");
-    Console.WriteLine("  dotnet user-secrets set \"Dataverse:Connections:0:ConnectionString\" \"AuthType=ClientSecret;Url=...\"");
-    Console.ResetColor();
-    Console.WriteLine();
-    Console.WriteLine("Or set environment variable Dataverse__Connections__0__ConnectionString");
-    Console.WriteLine();
-    return 1;
-}
+    Name = "ppds-dataverse-demo"
+};
 
-Console.WriteLine("Connecting to Dataverse...");
-Console.WriteLine();
+// Add subcommands
+rootCommand.AddCommand(WhoAmICommand.Create());
+rootCommand.AddCommand(SeedCommand.Create());
+rootCommand.AddCommand(CleanCommand.Create());
 
-try
+// Default behavior: show help if no command specified
+rootCommand.SetHandler(() =>
 {
-    await using var client = await pool.GetClientAsync();
-
-    var request = new WhoAmIRequest();
-    var response = (WhoAmIResponse)await client.ExecuteAsync(request);
-
-    Console.WriteLine("WhoAmI Result:");
-    Console.WriteLine($"  User ID:         {response.UserId}");
-    Console.WriteLine($"  Organization ID: {response.OrganizationId}");
-    Console.WriteLine($"  Business Unit:   {response.BusinessUnitId}");
+    Console.WriteLine("PPDS.Dataverse Demo");
+    Console.WriteLine("===================");
     Console.WriteLine();
-
-    // Display pool statistics
-    var stats = pool.Statistics;
-    Console.WriteLine("Pool Statistics:");
-    Console.WriteLine($"  Total Connections: {stats.TotalConnections}");
-    Console.WriteLine($"  Active:            {stats.ActiveConnections}");
-    Console.WriteLine($"  Idle:              {stats.IdleConnections}");
-    Console.WriteLine($"  Requests Served:   {stats.RequestsServed}");
-
-    if (stats.ThrottledConnections > 0)
-    {
-        Console.WriteLine($"  Throttled:         {stats.ThrottledConnections}");
-    }
-
+    Console.WriteLine("Commands:");
+    Console.WriteLine("  whoami  Test connectivity with WhoAmI request");
+    Console.WriteLine("  seed    Create sample accounts and contacts");
+    Console.WriteLine("  clean   Remove sample data from Dataverse");
     Console.WriteLine();
-    return 0;
-}
-catch (Exception ex)
-{
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine($"Error: {ex.Message}");
-    Console.ResetColor();
+    Console.WriteLine("Usage:");
+    Console.WriteLine("  dotnet run -- whoami");
+    Console.WriteLine("  dotnet run -- seed");
+    Console.WriteLine("  dotnet run -- clean");
     Console.WriteLine();
-    return 1;
-}
+    Console.WriteLine("Configuration:");
+    Console.WriteLine("  Connection is configured via .NET User Secrets.");
+    Console.WriteLine("  See docs/guides/LOCAL_DEVELOPMENT_GUIDE.md for setup.");
+    Console.WriteLine();
+});
+
+return await rootCommand.InvokeAsync(args);
