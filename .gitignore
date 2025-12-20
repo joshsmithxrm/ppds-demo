@@ -16,6 +16,10 @@
 .env.local
 .env.*.local
 
+# App settings with secrets (use appsettings.Development.json locally)
+**/appsettings.Development.json
+**/appsettings.Local.json
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
