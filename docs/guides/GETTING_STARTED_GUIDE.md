@@ -275,6 +275,7 @@ Common issues:
 
 ## Next Steps
 
+- Review [LOCAL_DEVELOPMENT_GUIDE.md](LOCAL_DEVELOPMENT_GUIDE.md) for .NET secrets and console app setup
 - Review [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md) for detailed environment configuration
 - Read [ALM_OVERVIEW.md](../strategy/ALM_OVERVIEW.md) for ALM philosophy
 - Check [PIPELINE_STRATEGY.md](../strategy/PIPELINE_STRATEGY.md) for CI/CD details

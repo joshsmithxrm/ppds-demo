@@ -1,12 +1,18 @@
 using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using PPDS.Dataverse.DependencyInjection;
 using PPDS.Dataverse.Pooling;
 
 Console.WriteLine("PPDS.Dataverse Connection Pool Demo");
 Console.WriteLine("====================================");
 Console.WriteLine();
 
+// Host.CreateDefaultBuilder automatically includes:
+// - appsettings.json
+// - appsettings.{Environment}.json
+// - User secrets (when DOTNET_ENVIRONMENT=Development)
+// - Environment variables
 var host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((context, services) =>
     {
@@ -22,21 +28,15 @@ if (!pool.IsEnabled)
     Console.ForegroundColor = ConsoleColor.Red;
     Console.WriteLine("Error: Connection pool is not enabled.");
     Console.WriteLine();
-    Console.WriteLine("Please configure a connection string in appsettings.Development.json:");
-    Console.WriteLine();
     Console.ResetColor();
-    Console.WriteLine("""
-    {
-      "Dataverse": {
-        "Connections": [
-          {
-            "Name": "Primary",
-            "ConnectionString": "AuthType=ClientSecret;Url=https://yourorg.crm.dynamics.com;ClientId=xxx;ClientSecret=xxx"
-          }
-        ]
-      }
-    }
-    """);
+    Console.WriteLine("Configure using .NET User Secrets (recommended):");
+    Console.WriteLine();
+    Console.ForegroundColor = ConsoleColor.DarkGray;
+    Console.WriteLine("  dotnet user-secrets set \"Dataverse:Connections:0:Name\" \"Primary\"");
+    Console.WriteLine("  dotnet user-secrets set \"Dataverse:Connections:0:ConnectionString\" \"AuthType=ClientSecret;Url=...\"");
+    Console.ResetColor();
+    Console.WriteLine();
+    Console.WriteLine("Or set environment variable Dataverse__Connections__0__ConnectionString");
     Console.WriteLine();
     return 1;
 }

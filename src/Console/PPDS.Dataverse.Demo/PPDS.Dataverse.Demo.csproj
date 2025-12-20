@@ -5,12 +5,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>ppds-dataverse-demo</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.*" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.*" />
-    <PackageReference Include="PPDS.Dataverse" Version="1.0.0-alpha.1" />
+    <PackageReference Include="PPDS.Dataverse" Version="1.0.0-alpha1" />
   </ItemGroup>
 
   <ItemGroup>
