@@ -31,5 +31,13 @@
       <MessagePropertyName>Target</MessagePropertyName>
       <IsCustomizable>1</IsCustomizable>
     </SdkMessageProcessingStepImage>
+    <SdkMessageProcessingStepImage Name="PreImageName">
+      <SdkMessageProcessingStepImageId>{8c8ef493-09dd-f011-8543-000d3a3b9cba}</SdkMessageProcessingStepImageId>
+      <Attributes></Attributes>
+      <EntityAlias>PreImage</EntityAlias>
+      <ImageType>0</ImageType>
+      <MessagePropertyName>Target</MessagePropertyName>
+      <IsCustomizable>1</IsCustomizable>
+    </SdkMessageProcessingStepImage>
   </SdkMessageProcessingStepImages>
 </SdkMessageProcessingStep>

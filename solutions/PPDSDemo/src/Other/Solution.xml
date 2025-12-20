@@ -8,7 +8,7 @@
     <Descriptions>
       <Description description="Demo solution showcasing the Power Platform Developer Suite VS Code extension" languagecode="1033" />
     </Descriptions>
-    <Version>1.0.20251219.25</Version>
+    <Version>1.0.20251220.26</Version>
     <Managed>2</Managed>
     <Publisher>
       <UniqueName>PPDSDemoPublisher</UniqueName>
@@ -91,6 +91,7 @@
       <RootComponent type="92" id="{a939bd88-43da-f011-8543-000d3a3b9cba}" behavior="0" />
       <RootComponent type="92" id="{dc9dfbce-46da-f011-8543-000d3a3b9cba}" behavior="0" />
       <RootComponent type="95" id="{6d37edfa-79dc-f011-8543-000d3a3b9cba}" behavior="0" />
+      <RootComponent type="95" id="{b5dac77c-79dc-f011-8543-000d3a3b9cba}" behavior="0" />
     </RootComponents>
     <MissingDependencies>
       <MissingDependency>

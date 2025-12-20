@@ -1,6 +1,9 @@
 /// <reference path="../typings/xrm.d.ts" />
 
 /**
+ * My comment from VS Code
+ * My comment from the browser
+ * My third comment from VS Code
  * Account Form Script
  * Web Resource: ppds_/scripts/account.form.js
  *
