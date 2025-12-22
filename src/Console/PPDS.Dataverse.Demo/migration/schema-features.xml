@@ -2,23 +2,11 @@
 <!--
   Migration Schema demonstrating ppds-migrate advanced features:
 
-  1. M2M Relationships - systemuserroles (User to Security Role)
-  2. Plugin Disable/Enable - disableplugins attribute
-  3. Attribute Filtering - include/exclude patterns
+  1. M2M Relationships: systemuserroles (User to Security Role)
+  2. Plugin Disable/Enable: disableplugins attribute
+  3. Attribute Filtering: include/exclude patterns (via CLI options)
 
-  Usage:
-    # Generate with relationships
-    ppds-migrate schema generate -e account,contact,systemuser -o schema.xml --include-relationships
-
-    # Export with attribute filtering
-    ppds-migrate export --schema schema.xml --output data.zip \
-      --exclude-attributes createdon,modifiedon,createdby,modifiedby \
-      --exclude-patterns *versionnumber,*utcconversion*
-
-    # Import with user mapping and plugins disabled
-    ppds-migrate import --data data.zip \
-      --user-mapping migration/user-mapping.xml \
-      --mode Upsert
+  See MigrationFeaturesCommand.cs for CLI usage examples.
 -->
 <entities>
   <!--

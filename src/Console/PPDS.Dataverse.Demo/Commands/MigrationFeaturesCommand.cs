@@ -497,27 +497,32 @@ public static class MigrationFeaturesCommand
         using var process = Process.Start(psi);
         if (process == null) return 1;
 
-        if (verbose)
-        {
-            var output = await process.StandardOutput.ReadToEndAsync();
-            var error = await process.StandardError.ReadToEndAsync();
-
-            if (!string.IsNullOrEmpty(output))
-            {
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine(output);
-                Console.ResetColor();
-            }
-
-            if (!string.IsNullOrEmpty(error))
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine(error);
-                Console.ResetColor();
-            }
-        }
+        // IMPORTANT: Always read both streams to prevent deadlock
+        // (process blocks if output buffer fills while we wait for exit)
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
 
         await process.WaitForExitAsync();
+
+        var output = await outputTask;
+        var error = await errorTask;
+
+        // Show stdout only in verbose mode
+        if (verbose && !string.IsNullOrEmpty(output))
+        {
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine(output);
+            Console.ResetColor();
+        }
+
+        // Always show stderr so we can see errors
+        if (!string.IsNullOrEmpty(error))
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"    CLI Error: {error}");
+            Console.ResetColor();
+        }
+
         return process.ExitCode;
     }
 }
