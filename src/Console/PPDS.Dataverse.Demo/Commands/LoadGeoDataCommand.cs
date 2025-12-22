@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.CommandLine;
 using System.Diagnostics;
 using System.Globalization;
@@ -48,20 +49,26 @@ public static class LoadGeoDataCommand
             "--states-only",
             "Only load states (skip ZIP codes)");
 
+        var parallelOption = new Option<int>(
+            "--parallel",
+            () => 4,
+            "Number of parallel batches (1=sequential, 4-8 recommended)");
+
         command.AddOption(limitOption);
         command.AddOption(batchSizeOption);
         command.AddOption(skipDownloadOption);
         command.AddOption(statesOnlyOption);
+        command.AddOption(parallelOption);
 
-        command.SetHandler(async (int? limit, int batchSize, bool skipDownload, bool statesOnly) =>
+        command.SetHandler(async (int? limit, int batchSize, bool skipDownload, bool statesOnly, int parallel) =>
         {
-            Environment.ExitCode = await ExecuteAsync(limit, batchSize, skipDownload, statesOnly);
-        }, limitOption, batchSizeOption, skipDownloadOption, statesOnlyOption);
+            Environment.ExitCode = await ExecuteAsync(limit, batchSize, skipDownload, statesOnly, parallel);
+        }, limitOption, batchSizeOption, skipDownloadOption, statesOnlyOption, parallelOption);
 
         return command;
     }
 
-    public static async Task<int> ExecuteAsync(int? limit, int batchSize, bool skipDownload, bool statesOnly)
+    public static async Task<int> ExecuteAsync(int? limit, int batchSize, bool skipDownload, bool statesOnly, int maxParallel = 4)
     {
         Console.WriteLine("╔══════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║       Load Geographic Data for Volume Testing                ║");
@@ -69,6 +76,7 @@ public static class LoadGeoDataCommand
         Console.WriteLine();
 
         batchSize = Math.Clamp(batchSize, 1, 1000);
+        maxParallel = Math.Clamp(maxParallel, 1, 16);
 
         using var host = CommandBase.CreateHost([]);
         var config = host.Services.GetRequiredService<IConfiguration>();
@@ -126,7 +134,7 @@ public static class LoadGeoDataCommand
             }
 
             Console.WriteLine($"  Connected to: {client.ConnectedOrgFriendlyName} ({envName})");
-            Console.WriteLine($"  Batch size: {batchSize}");
+            Console.WriteLine($"  Batch size: {batchSize}, Parallel batches: {maxParallel}");
             Console.WriteLine();
 
             // ═══════════════════════════════════════════════════════════════════
@@ -175,7 +183,7 @@ public static class LoadGeoDataCommand
 
             var zipStopwatch = Stopwatch.StartNew();
 
-            var (created, updated, errors) = await LoadZipCodesAsync(client, zipCodes, stateMap, batchSize);
+            var (created, updated, errors) = await LoadZipCodesAsync(connectionString, zipCodes, stateMap, batchSize, maxParallel);
 
             zipStopwatch.Stop();
 
@@ -351,110 +359,135 @@ public static class LoadGeoDataCommand
     }
 
     private static async Task<(int created, int updated, int errors)> LoadZipCodesAsync(
-        ServiceClient client,
+        string connectionString,
         List<ZipCodeRecord> zipCodes,
         Dictionary<string, Guid> stateMap,
-        int batchSize)
+        int batchSize,
+        int maxParallel)
     {
-        int totalCreated = 0, totalUpdated = 0, totalErrors = 0;
-        var batches = zipCodes.Chunk(batchSize).ToList();
+        // Build all entities upfront
+        var entities = new List<Entity>();
+        var skippedCount = 0;
 
-        Console.WriteLine($"  Processing {zipCodes.Count:N0} ZIP codes in {batches.Count:N0} batches...");
-
-        var overallStopwatch = Stopwatch.StartNew();
-        var intervalStopwatch = Stopwatch.StartNew();
-        int processed = 0;
-        int lastReportedCount = 0;
-
-        foreach (var batch in batches)
+        foreach (var zip in zipCodes)
         {
-            var executeMultiple = new ExecuteMultipleRequest
+            if (!stateMap.TryGetValue(zip.StateId, out var stateId))
             {
-                Requests = new OrganizationRequestCollection(),
-                Settings = new ExecuteMultipleSettings
-                {
-                    ContinueOnError = true,
-                    ReturnResponses = true
-                }
-            };
-
-            foreach (var zip in batch)
-            {
-                if (!stateMap.TryGetValue(zip.StateId, out var stateId))
-                {
-                    totalErrors++;
-                    continue;
-                }
-
-                var entity = new Entity("ppds_zipcode");
-                // Set alternate key for upsert matching
-                entity.KeyAttributes["ppds_code"] = zip.Zip;
-                // Set other attributes
-                entity["ppds_stateid"] = new EntityReference("ppds_state", stateId);
-                entity["ppds_cityname"] = zip.City;
-                entity["ppds_county"] = zip.County;
-                entity["ppds_latitude"] = zip.Lat;
-                entity["ppds_longitude"] = zip.Lng;
-
-                // Use Upsert with alternate key to handle existing records
-                executeMultiple.Requests.Add(new UpsertRequest
-                {
-                    Target = entity
-                });
-            }
-
-            if (executeMultiple.Requests.Count == 0)
+                skippedCount++;
                 continue;
-
-            try
-            {
-                var response = (ExecuteMultipleResponse)await client.ExecuteAsync(executeMultiple);
-
-                foreach (var itemResponse in response.Responses)
-                {
-                    if (itemResponse.Fault != null)
-                    {
-                        totalErrors++;
-                    }
-                    else if (itemResponse.Response is UpsertResponse upsertResponse)
-                    {
-                        if (upsertResponse.RecordCreated)
-                            totalCreated++;
-                        else
-                            totalUpdated++;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine();
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"    Batch error: {ex.Message}");
-                Console.ResetColor();
-                totalErrors += batch.Length;
             }
 
-            processed += batch.Length;
+            var entity = new Entity("ppds_zipcode");
+            // Set alternate key for upsert matching
+            entity.KeyAttributes["ppds_code"] = zip.Zip;
+            // Set attributes
+            entity["ppds_code"] = zip.Zip;
+            entity["ppds_stateid"] = new EntityReference("ppds_state", stateId);
+            entity["ppds_cityname"] = zip.City;
+            entity["ppds_county"] = zip.County;
+            entity["ppds_latitude"] = zip.Lat;
+            entity["ppds_longitude"] = zip.Lng;
 
-            // Progress update every 5 seconds
-            if (intervalStopwatch.Elapsed.TotalSeconds >= 5)
-            {
-                var pct = (double)processed / zipCodes.Count * 100;
-                var intervalElapsed = intervalStopwatch.Elapsed.TotalSeconds;
-                var intervalCount = processed - lastReportedCount;
-                var instantRate = intervalCount / intervalElapsed;
-                var overallRate = processed / overallStopwatch.Elapsed.TotalSeconds;
-                var remaining = (zipCodes.Count - processed) / overallRate;
-                var elapsed = overallStopwatch.Elapsed;
-
-                Console.WriteLine($"    Progress: {processed:N0}/{zipCodes.Count:N0} ({pct:F1}%) | {instantRate:F0}/s | Elapsed: {elapsed:mm\\:ss} | ETA: {remaining:F0}s");
-
-                lastReportedCount = processed;
-                intervalStopwatch.Restart();
-            }
+            entities.Add(entity);
         }
 
-        return (totalCreated, totalUpdated, totalErrors);
+        if (skippedCount > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"  Skipped {skippedCount} records (unknown state)");
+            Console.ResetColor();
+        }
+
+        var batches = entities.Chunk(batchSize).ToList();
+        Console.WriteLine($"  Processing {entities.Count:N0} ZIP codes in {batches.Count:N0} batches ({maxParallel} parallel)...");
+
+        // Thread-safe counters and progress tracking
+        var totalCreated = 0;
+        var totalUpdated = 0;
+        var totalErrors = 0;
+        var totalProcessed = 0;
+        var overallStopwatch = Stopwatch.StartNew();
+        var lastProgressUpdate = DateTime.UtcNow;
+        var progressLock = new object();
+
+        // Process batches in parallel
+        await Parallel.ForEachAsync(
+            batches,
+            new ParallelOptions { MaxDegreeOfParallelism = maxParallel },
+            async (batch, ct) =>
+            {
+                // Each parallel task gets its own connection
+                using var client = new ServiceClient(connectionString);
+                if (!client.IsReady)
+                {
+                    Interlocked.Add(ref totalErrors, batch.Length);
+                    Interlocked.Add(ref totalProcessed, batch.Length);
+                    return;
+                }
+
+                var batchList = batch.ToList();
+                var targets = new EntityCollection(batchList) { EntityName = "ppds_zipcode" };
+                var request = new UpsertMultipleRequest { Targets = targets };
+
+                try
+                {
+                    var response = (UpsertMultipleResponse)await client.ExecuteAsync(request, ct);
+
+                    // UpsertMultiple doesn't return per-record created/updated status
+                    // All records in batch succeeded
+                    var batchSuccess = batchList.Count;
+                    Interlocked.Add(ref totalCreated, batchSuccess);
+                    Interlocked.Add(ref totalProcessed, batchSuccess);
+                }
+                catch (Exception ex)
+                {
+                    // Batch failed - log and count as errors
+                    lock (progressLock)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"    Batch error: {ex.Message}");
+                        Console.ResetColor();
+                    }
+                    Interlocked.Add(ref totalErrors, batchList.Count);
+                    Interlocked.Add(ref totalProcessed, batchList.Count);
+                }
+
+                // Progress update (rate-limited to avoid console spam)
+                var now = DateTime.UtcNow;
+                bool shouldUpdate;
+                lock (progressLock)
+                {
+                    shouldUpdate = (now - lastProgressUpdate).TotalSeconds >= 3;
+                    if (shouldUpdate) lastProgressUpdate = now;
+                }
+
+                if (shouldUpdate)
+                {
+                    var processed = Interlocked.CompareExchange(ref totalProcessed, 0, 0);
+                    var elapsed = overallStopwatch.Elapsed;
+                    var pct = (double)processed / entities.Count * 100;
+                    var rate = elapsed.TotalSeconds > 0.1 ? processed / elapsed.TotalSeconds : 0;
+                    var remaining = rate > 0.001 ? (entities.Count - processed) / rate : 0;
+                    var etaDisplay = remaining > 0 ? TimeSpan.FromSeconds(remaining).ToString(@"mm\:ss") : "--:--";
+
+                    lock (progressLock)
+                    {
+                        Console.WriteLine($"    Progress: {processed:N0}/{entities.Count:N0} ({pct:F1}%) " +
+                                          $"| {rate:F0}/s " +
+                                          $"| Elapsed: {elapsed:mm\\:ss} " +
+                                          $"| ETA: {etaDisplay}");
+                    }
+                }
+            });
+
+        // Final progress
+        var finalElapsed = overallStopwatch.Elapsed;
+        var finalRate = finalElapsed.TotalSeconds > 0.1 ? totalProcessed / finalElapsed.TotalSeconds : 0;
+        Console.WriteLine($"    Final: {totalProcessed:N0}/{entities.Count:N0} " +
+                          $"| {finalRate:F0}/s overall " +
+                          $"| {finalElapsed:mm\\:ss} elapsed");
+
+        return (totalCreated, totalUpdated, totalErrors + skippedCount);
     }
 
     // CSV record class matching GitHub free_zipcode_data format
