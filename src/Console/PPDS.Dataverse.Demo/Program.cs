@@ -15,6 +15,11 @@ rootCommand.AddCommand(SeedCommand.Create());
 rootCommand.AddCommand(CleanCommand.Create());
 rootCommand.AddCommand(TestMigrationCommand.Create());
 rootCommand.AddCommand(MigrationFeaturesCommand.Create());
+rootCommand.AddCommand(CrossEnvMigrationCommand.Create());
+rootCommand.AddCommand(GenerateUserMappingCommand.Create());
+rootCommand.AddCommand(CreateGeoSchemaCommand.Create());
+rootCommand.AddCommand(LoadGeoDataCommand.Create());
+rootCommand.AddCommand(CleanGeoDataCommand.Create());
 
 // Default behavior: show help if no command specified
 rootCommand.SetHandler(() =>
@@ -28,6 +33,8 @@ rootCommand.SetHandler(() =>
     Console.WriteLine("  clean           Remove sample data from Dataverse");
     Console.WriteLine("  test-migration  End-to-end test of ppds-migrate CLI");
     Console.WriteLine("  demo-features   Demo new migration features (M2M, filtering, etc.)");
+    Console.WriteLine("  migrate-to-qa   Export from Dev and import to QA");
+    Console.WriteLine("  generate-user-mapping  Generate user mapping file for cross-env migration");
     Console.WriteLine();
     Console.WriteLine("Usage:");
     Console.WriteLine("  dotnet run -- whoami");
@@ -35,6 +42,8 @@ rootCommand.SetHandler(() =>
     Console.WriteLine("  dotnet run -- clean");
     Console.WriteLine("  dotnet run -- test-migration");
     Console.WriteLine("  dotnet run -- demo-features --feature all");
+    Console.WriteLine("  dotnet run -- migrate-to-qa --dry-run");
+    Console.WriteLine("  dotnet run -- generate-user-mapping --analyze");
     Console.WriteLine();
     Console.WriteLine("Configuration:");
     Console.WriteLine("  Connection is configured via .NET User Secrets.");

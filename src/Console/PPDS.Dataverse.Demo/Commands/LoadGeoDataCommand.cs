@@ -72,11 +72,11 @@ public static class LoadGeoDataCommand
 
         using var host = CommandBase.CreateHost([]);
         var config = host.Services.GetRequiredService<IConfiguration>();
-        var connectionString = config["Dataverse:Connections:0:ConnectionString"];
+        var (connectionString, envName) = CommandBase.ResolveEnvironment(config, "Dev");
 
         if (string.IsNullOrEmpty(connectionString))
         {
-            CommandBase.WriteError("Connection string not found");
+            CommandBase.WriteError("Connection not found. Configure Environments:Dev:ConnectionString in user-secrets.");
             return 1;
         }
 
@@ -125,7 +125,7 @@ public static class LoadGeoDataCommand
                 return 1;
             }
 
-            Console.WriteLine($"  Connected to: {client.ConnectedOrgFriendlyName}");
+            Console.WriteLine($"  Connected to: {client.ConnectedOrgFriendlyName} ({envName})");
             Console.WriteLine($"  Batch size: {batchSize}");
             Console.WriteLine();
 
@@ -361,8 +361,10 @@ public static class LoadGeoDataCommand
 
         Console.WriteLine($"  Processing {zipCodes.Count:N0} ZIP codes in {batches.Count:N0} batches...");
 
-        var progressStopwatch = Stopwatch.StartNew();
+        var overallStopwatch = Stopwatch.StartNew();
+        var intervalStopwatch = Stopwatch.StartNew();
         int processed = 0;
+        int lastReportedCount = 0;
 
         foreach (var batch in batches)
         {
@@ -435,13 +437,20 @@ public static class LoadGeoDataCommand
             processed += batch.Length;
 
             // Progress update every 5 seconds
-            if (progressStopwatch.Elapsed.TotalSeconds >= 5)
+            if (intervalStopwatch.Elapsed.TotalSeconds >= 5)
             {
                 var pct = (double)processed / zipCodes.Count * 100;
-                var rate = processed / progressStopwatch.Elapsed.TotalSeconds;
-                var remaining = (zipCodes.Count - processed) / rate;
-                Console.WriteLine($"    Progress: {processed:N0}/{zipCodes.Count:N0} ({pct:F1}%) - {rate:F1} rec/s - ETA: {remaining:F0}s");
-                progressStopwatch.Restart();
+                var intervalElapsed = intervalStopwatch.Elapsed.TotalSeconds;
+                var intervalCount = processed - lastReportedCount;
+                var instantRate = intervalCount / intervalElapsed;
+                var overallRate = processed / overallStopwatch.Elapsed.TotalSeconds;
+                var remaining = (zipCodes.Count - processed) / overallRate;
+                var elapsed = overallStopwatch.Elapsed;
+
+                Console.WriteLine($"    Progress: {processed:N0}/{zipCodes.Count:N0} ({pct:F1}%) | {instantRate:F0}/s | Elapsed: {elapsed:mm\\:ss} | ETA: {remaining:F0}s");
+
+                lastReportedCount = processed;
+                intervalStopwatch.Restart();
             }
         }
 

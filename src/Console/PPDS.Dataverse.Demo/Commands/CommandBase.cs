@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using PPDS.Dataverse.DependencyInjection;
@@ -77,5 +78,75 @@ public abstract class CommandBase
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine(message);
         Console.ResetColor();
+    }
+
+    /// <summary>
+    /// Resolves a connection string for a specific environment.
+    /// Looks in Environments:{envName}:ConnectionString first, then falls back to pool config.
+    /// </summary>
+    /// <param name="config">The configuration instance.</param>
+    /// <param name="envName">Environment name (e.g., "Dev", "QA"). If null, uses "Dev".</param>
+    /// <returns>Tuple of (connectionString, displayName). ConnectionString is null if not found.</returns>
+    public static (string? ConnectionString, string DisplayName) ResolveEnvironment(
+        IConfiguration config,
+        string? envName = null)
+    {
+        envName ??= "Dev";
+
+        // Try Environments:{name}:ConnectionString first
+        var connectionString = config[$"Environments:{envName}:ConnectionString"];
+        var displayName = config[$"Environments:{envName}:Name"] ?? envName;
+
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            return (connectionString, displayName);
+        }
+
+        // Fall back to Dataverse:Connections:0 for backwards compatibility
+        // Only if envName is "Dev" or default
+        if (envName.Equals("Dev", StringComparison.OrdinalIgnoreCase))
+        {
+            connectionString = config["Dataverse:Connections:0:ConnectionString"];
+            displayName = config["Dataverse:Connections:0:Name"] ?? "Primary";
+
+            if (!string.IsNullOrEmpty(connectionString))
+            {
+                return (connectionString, displayName);
+            }
+        }
+
+        return (null, envName);
+    }
+
+    /// <summary>
+    /// Resolves connection for environment by name or index.
+    /// Supports: "Dev", "QA", "0", "1", etc.
+    /// </summary>
+    public static (string? ConnectionString, string DisplayName) ResolveEnvironmentByNameOrIndex(
+        IConfiguration config,
+        string? environment)
+    {
+        // Default to Dev
+        if (string.IsNullOrEmpty(environment))
+        {
+            return ResolveEnvironment(config, "Dev");
+        }
+
+        // Try as environment name first (Dev, QA, Prod, etc.)
+        var (connStr, name) = ResolveEnvironment(config, environment);
+        if (!string.IsNullOrEmpty(connStr))
+        {
+            return (connStr, name);
+        }
+
+        // Try as index (for backwards compatibility)
+        if (int.TryParse(environment, out var index))
+        {
+            connStr = config[$"Dataverse:Connections:{index}:ConnectionString"];
+            name = config[$"Dataverse:Connections:{index}:Name"] ?? $"Connection {index}";
+            return (connStr, name);
+        }
+
+        return (null, environment);
     }
 }

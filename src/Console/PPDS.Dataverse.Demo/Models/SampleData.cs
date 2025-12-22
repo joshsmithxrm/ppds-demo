@@ -166,6 +166,7 @@ public static class SampleData
     {
         var account = new Entity("account", id)
         {
+            ["accountid"] = id, // Required for UpsertMultiple to use this ID
             ["name"] = name,
             ["telephone1"] = phone,
         };
@@ -206,6 +207,7 @@ public static class SampleData
 
         return new Entity("contact", id)
         {
+            ["contactid"] = id, // Required for UpsertMultiple to use this ID
             ["firstname"] = firstName,
             ["lastname"] = lastName,
             ["fullname"] = fullName.Replace(Prefix, ""), // Remove prefix for display name

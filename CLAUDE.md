@@ -20,30 +20,73 @@
 
 ## 🔐 Dataverse Connection (User Secrets)
 
-The demo app uses .NET User Secrets for Dataverse credentials. **This is already configured.**
+The demo app uses .NET User Secrets for Dataverse credentials.
 
 | Property | Value |
 |----------|-------|
 | UserSecretsId | `ppds-dataverse-demo` |
-| Config Path | `Dataverse:Connections:0:ConnectionString` |
+| Pool Config | `Dataverse:Connections:0` |
+| Environment Config | `Environments:{name}:ConnectionString` |
 
-### Check Current Connection
+### Configuration Structure
+
+The SDK uses **two separate config patterns** for different purposes:
+
+1. **`Dataverse:Connections:*`** - For connection pool (load-balancing within ONE org)
+2. **`Environments:*`** - For explicit environment targeting (cross-env operations)
+
+> ⚠️ **Never put multiple orgs in `Dataverse:Connections`** - the pool will load-balance randomly across them. See [SDK README](../sdk/src/PPDS.Dataverse/README.md#multi-environment-scenarios).
+
+### Single Environment (Default)
+
+For most work, configure just the pool connection:
+
+```powershell
+cd src/Console/PPDS.Dataverse.Demo
+dotnet user-secrets set "Dataverse:Connections:0:Name" "Primary"
+dotnet user-secrets set "Dataverse:Connections:0:ConnectionString" "AuthType=ClientSecret;Url=https://dev.crm.dynamics.com;ClientId=...;ClientSecret=..."
+```
+
+### Multiple Environments (Cross-Env Migration)
+
+For cross-environment operations, add environment-specific connections:
+
+```powershell
+cd src/Console/PPDS.Dataverse.Demo
+
+# Pool connection (used by whoami, demo-features, general queries)
+dotnet user-secrets set "Dataverse:Connections:0:Name" "Primary"
+dotnet user-secrets set "Dataverse:Connections:0:ConnectionString" "AuthType=...;Url=https://dev.crm.dynamics.com;..."
+
+# Environment-specific connections (used by seed, clean, migrate-to-qa, load-geo-data)
+dotnet user-secrets set "Environments:Dev:Name" "DEV"
+dotnet user-secrets set "Environments:Dev:ConnectionString" "AuthType=...;Url=https://dev.crm.dynamics.com;..."
+
+dotnet user-secrets set "Environments:QA:Name" "QA"
+dotnet user-secrets set "Environments:QA:ConnectionString" "AuthType=...;Url=https://qa.crm.dynamics.com;..."
+```
+
+### Check Current Connections
 
 ```powershell
 dotnet user-secrets list --project src/Console/PPDS.Dataverse.Demo
 ```
 
-### Set Connection (if needed)
+### Command Connection Usage
 
-```powershell
-cd src/Console/PPDS.Dataverse.Demo
-dotnet user-secrets set "Dataverse:Connections:0:Name" "Primary"
-dotnet user-secrets set "Dataverse:Connections:0:ConnectionString" "AuthType=ClientSecret;Url=https://org.crm.dynamics.com;ClientId=...;ClientSecret=..."
-```
+| Command | Connection Source | Why |
+|---------|-------------------|-----|
+| `whoami` | Pool (`Dataverse:Connections:0`) | General pool usage |
+| `demo-features` | Pool (`Dataverse:Connections:0`) | General pool usage |
+| `seed` | `Environments:Dev` | Must target specific env |
+| `clean` | `Environments:Dev` (default) | Must target specific env |
+| `clean --env QA` | `Environments:QA` | Explicit targeting |
+| `load-geo-data` | `Environments:Dev` (default) | Must target specific env |
+| `migrate-to-qa` | `Environments:Dev` + `Environments:QA` | Cross-env operation |
 
-### Usage in Code
+### Why Two Config Sections?
 
-The connection is automatically loaded via `IConfiguration`. All demo commands, scratchpad scripts, and the migration CLI use this same secret.
+The pool is designed for **load-balancing within a single org** (multiple App Users = multiplied API quota). Commands that modify data need **explicit environment targeting** to avoid accidentally writing to the wrong org.
 
 ---
 
@@ -51,6 +94,7 @@ The connection is automatically loaded via `IConfiguration`. All demo commands, 
 
 | Rule | Why |
 |------|-----|
+| **Modify files outside `demo/`** | This repo only; sdk/, tools/, extension/ are separate repos |
 | `Console.WriteLine` in plugins | Sandbox blocks it; use `ITracingService` |
 | Hardcoded GUIDs | Breaks across environments; use config or queries |
 | `Xrm.Page` in JavaScript | Deprecated since v9; use `formContext` |
@@ -61,6 +105,9 @@ The connection is automatically loaded via `IConfiguration`. All demo commands, 
 | PR directly to main | Always target `develop` first |
 | Squash merge develop→main | Use regular merge to preserve feature commits |
 | Sync plugins in Pre-Create | Entity doesn't exist yet; use Post-Create |
+
+> **Cross-Repo Changes:** If a fix requires changes to `sdk/`, `tools/`, `extension/`, or `alm/`,
+> describe the proposed change and get approval first. Do NOT edit files in other repositories.
 
 ---
 
