@@ -445,10 +445,8 @@ public static class LoadGeoDataCommand
             }
 
             var entity = new Entity("ppds_zipcode");
-            // For UpsertMultiple: set key in KeyAttributes ONLY, not in Attributes
-            // Having the same value in both causes ClassifyEntitiesForUpdateAndCreateV2 to fail
+            // Set alternate key for upsert (do NOT also set in Attributes - see SDK docs)
             entity.KeyAttributes["ppds_code"] = zip.Zip;
-            // DO NOT: entity["ppds_code"] = zip.Zip; -- causes UpsertMultiple to fail!
             entity["ppds_stateid"] = new EntityReference("ppds_state", stateId);
             entity["ppds_cityname"] = zip.City;
             entity["ppds_county"] = zip.County;
