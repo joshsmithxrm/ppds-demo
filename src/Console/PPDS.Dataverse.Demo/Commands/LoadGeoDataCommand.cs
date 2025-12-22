@@ -8,6 +8,7 @@ using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
@@ -54,21 +55,26 @@ public static class LoadGeoDataCommand
             () => 4,
             "Number of parallel batches (1=sequential, 4-8 recommended)");
 
+        var verboseOption = new Option<bool>(
+            ["--verbose", "-v"],
+            "Enable verbose logging (shows SDK debug output)");
+
         command.AddOption(limitOption);
         command.AddOption(batchSizeOption);
         command.AddOption(skipDownloadOption);
         command.AddOption(statesOnlyOption);
         command.AddOption(parallelOption);
+        command.AddOption(verboseOption);
 
-        command.SetHandler(async (int? limit, int batchSize, bool skipDownload, bool statesOnly, int parallel) =>
+        command.SetHandler(async (int? limit, int batchSize, bool skipDownload, bool statesOnly, int parallel, bool verbose) =>
         {
-            Environment.ExitCode = await ExecuteAsync(limit, batchSize, skipDownload, statesOnly, parallel);
-        }, limitOption, batchSizeOption, skipDownloadOption, statesOnlyOption, parallelOption);
+            Environment.ExitCode = await ExecuteAsync(limit, batchSize, skipDownload, statesOnly, parallel, verbose);
+        }, limitOption, batchSizeOption, skipDownloadOption, statesOnlyOption, parallelOption, verboseOption);
 
         return command;
     }
 
-    public static async Task<int> ExecuteAsync(int? limit, int batchSize, bool skipDownload, bool statesOnly, int maxParallel = 4)
+    public static async Task<int> ExecuteAsync(int? limit, int batchSize, bool skipDownload, bool statesOnly, int maxParallel = 4, bool verbose = false)
     {
         Console.WriteLine("╔══════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║       Load Geographic Data for Volume Testing                ║");
@@ -77,6 +83,27 @@ public static class LoadGeoDataCommand
 
         batchSize = Math.Clamp(batchSize, 1, 1000);
         maxParallel = Math.Clamp(maxParallel, 1, 16);
+
+        // Configure verbose logging if requested - factory must outlive the operation
+        ILoggerFactory? loggerFactory = null;
+        ILogger? logger = null;
+        if (verbose)
+        {
+            Console.WriteLine("  Verbose logging enabled");
+            Console.WriteLine();
+
+            loggerFactory = LoggerFactory.Create(builder =>
+            {
+                builder
+                    .SetMinimumLevel(LogLevel.Debug)
+                    .AddSimpleConsole(options =>
+                    {
+                        options.SingleLine = true;
+                        options.TimestampFormat = "HH:mm:ss.fff ";
+                    });
+            });
+            logger = loggerFactory.CreateLogger<ServiceClient>();
+        }
 
         using var host = CommandBase.CreateHost([]);
         var config = host.Services.GetRequiredService<IConfiguration>();
@@ -126,7 +153,9 @@ public static class LoadGeoDataCommand
             Console.WriteLine("│ Phase 2: Connect to Dataverse                                   │");
             Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-            using var client = new ServiceClient(connectionString);
+            using var client = verbose && logger != null
+                ? new ServiceClient(connectionString, logger)
+                : new ServiceClient(connectionString);
             if (!client.IsReady)
             {
                 CommandBase.WriteError($"Connection failed: {client.LastError}");
@@ -183,7 +212,7 @@ public static class LoadGeoDataCommand
 
             var zipStopwatch = Stopwatch.StartNew();
 
-            var (created, updated, errors) = await LoadZipCodesAsync(connectionString, zipCodes, stateMap, batchSize, maxParallel);
+            var (created, updated, errors) = await LoadZipCodesAsync(connectionString, zipCodes, stateMap, batchSize, maxParallel, verbose, logger);
 
             zipStopwatch.Stop();
 
@@ -210,6 +239,10 @@ public static class LoadGeoDataCommand
         {
             CommandBase.WriteError($"Error: {ex.Message}");
             return 1;
+        }
+        finally
+        {
+            loggerFactory?.Dispose();
         }
     }
 
@@ -363,7 +396,9 @@ public static class LoadGeoDataCommand
         List<ZipCodeRecord> zipCodes,
         Dictionary<string, Guid> stateMap,
         int batchSize,
-        int maxParallel)
+        int maxParallel,
+        bool verbose,
+        ILogger? logger)
     {
         // Build all entities upfront
         var entities = new List<Entity>();
@@ -412,7 +447,9 @@ public static class LoadGeoDataCommand
 
         // Create a SINGLE shared client - ServiceClient is thread-safe for concurrent requests
         // DO NOT create clients inside the parallel loop (causes OAuth rate limiting)
-        using var client = new ServiceClient(connectionString);
+        using var client = verbose && logger != null
+            ? new ServiceClient(connectionString, logger)
+            : new ServiceClient(connectionString);
         if (!client.IsReady)
         {
             Console.ForegroundColor = ConsoleColor.Red;
