@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
@@ -12,6 +13,8 @@ namespace PPDS.Dataverse.Demo.Commands;
 /// <summary>
 /// Bulk deletes geographic reference data for clean volume testing.
 /// Deletes in dependency order: ZIP codes → cities → states.
+/// Uses ExecuteMultipleRequest with parallel batches for optimal throughput.
+/// (DeleteMultipleRequest only exists for elastic tables, not standard tables)
 /// </summary>
 public static class CleanGeoDataCommand
 {
@@ -21,8 +24,13 @@ public static class CleanGeoDataCommand
 
         var batchSizeOption = new Option<int>(
             "--batch-size",
-            () => 500,
-            "Batch size for ExecuteMultiple delete requests (1-1000)");
+            () => 100,
+            "Batch size for DeleteMultiple requests (1-1000)");
+
+        var parallelOption = new Option<int>(
+            "--parallel",
+            () => 4,
+            "Number of parallel batches (1=sequential, 4-8 recommended)");
 
         var zipOnlyOption = new Option<bool>(
             "--zip-only",
@@ -32,19 +40,25 @@ public static class CleanGeoDataCommand
             "--confirm",
             "Skip confirmation prompt");
 
+        var verboseOption = new Option<bool>(
+            ["--verbose", "-v"],
+            "Enable verbose logging (shows SDK debug output)");
+
         command.AddOption(batchSizeOption);
+        command.AddOption(parallelOption);
         command.AddOption(zipOnlyOption);
         command.AddOption(confirmOption);
+        command.AddOption(verboseOption);
 
-        command.SetHandler(async (int batchSize, bool zipOnly, bool confirm) =>
+        command.SetHandler(async (int batchSize, int parallel, bool zipOnly, bool confirm, bool verbose) =>
         {
-            Environment.ExitCode = await ExecuteAsync(batchSize, zipOnly, confirm);
-        }, batchSizeOption, zipOnlyOption, confirmOption);
+            Environment.ExitCode = await ExecuteAsync(batchSize, parallel, zipOnly, confirm, verbose);
+        }, batchSizeOption, parallelOption, zipOnlyOption, confirmOption, verboseOption);
 
         return command;
     }
 
-    public static async Task<int> ExecuteAsync(int batchSize, bool zipOnly, bool confirm)
+    public static async Task<int> ExecuteAsync(int batchSize, int maxParallel, bool zipOnly, bool confirm, bool verbose)
     {
         Console.WriteLine("╔══════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║       Clean Geographic Data                                  ║");
@@ -52,6 +66,28 @@ public static class CleanGeoDataCommand
         Console.WriteLine();
 
         batchSize = Math.Clamp(batchSize, 1, 1000);
+        maxParallel = Math.Clamp(maxParallel, 1, 16);
+
+        // Configure verbose logging if requested
+        ILoggerFactory? loggerFactory = null;
+        ILogger? logger = null;
+        if (verbose)
+        {
+            Console.WriteLine("  Verbose logging enabled");
+            Console.WriteLine();
+
+            loggerFactory = LoggerFactory.Create(builder =>
+            {
+                builder
+                    .SetMinimumLevel(LogLevel.Debug)
+                    .AddSimpleConsole(options =>
+                    {
+                        options.SingleLine = true;
+                        options.TimestampFormat = "HH:mm:ss.fff ";
+                    });
+            });
+            logger = loggerFactory.CreateLogger<ServiceClient>();
+        }
 
         using var host = CommandBase.CreateHost([]);
         var config = host.Services.GetRequiredService<IConfiguration>();
@@ -65,7 +101,11 @@ public static class CleanGeoDataCommand
 
         try
         {
-            using var client = new ServiceClient(connectionString);
+            // Create single shared client - ServiceClient is thread-safe for concurrent requests
+            using var client = verbose && logger != null
+                ? new ServiceClient(connectionString, logger)
+                : new ServiceClient(connectionString);
+
             if (!client.IsReady)
             {
                 CommandBase.WriteError($"Connection failed: {client.LastError}");
@@ -73,6 +113,7 @@ public static class CleanGeoDataCommand
             }
 
             Console.WriteLine($"  Connected to: {client.ConnectedOrgFriendlyName} ({envName})");
+            Console.WriteLine($"  Batch size: {batchSize}, Parallel batches: {maxParallel}");
             Console.WriteLine();
 
             // Count records to delete
@@ -114,6 +155,7 @@ public static class CleanGeoDataCommand
 
             var totalStopwatch = Stopwatch.StartNew();
             var totalDeleted = 0;
+            var totalErrors = 0;
 
             // Delete in dependency order: ZIP codes first
             if (zipCount > 0)
@@ -122,9 +164,10 @@ public static class CleanGeoDataCommand
                 Console.WriteLine("│ Deleting ZIP Codes                                              │");
                 Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-                var deleted = await BulkDeleteEntityAsync(client, "ppds_zipcode", "ppds_code", batchSize);
+                var (deleted, errors) = await BulkDeleteEntityAsync(client, "ppds_zipcode", batchSize, maxParallel);
                 totalDeleted += deleted;
-                Console.WriteLine($"  Deleted {deleted:N0} ZIP codes");
+                totalErrors += errors;
+                Console.WriteLine($"  Deleted {deleted:N0} ZIP codes" + (errors > 0 ? $" ({errors:N0} errors)" : ""));
                 Console.WriteLine();
             }
 
@@ -137,9 +180,10 @@ public static class CleanGeoDataCommand
                     Console.WriteLine("│ Deleting Cities                                                 │");
                     Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-                    var deleted = await BulkDeleteEntityAsync(client, "ppds_city", "ppds_name", batchSize);
+                    var (deleted, errors) = await BulkDeleteEntityAsync(client, "ppds_city", batchSize, maxParallel);
                     totalDeleted += deleted;
-                    Console.WriteLine($"  Deleted {deleted:N0} cities");
+                    totalErrors += errors;
+                    Console.WriteLine($"  Deleted {deleted:N0} cities" + (errors > 0 ? $" ({errors:N0} errors)" : ""));
                     Console.WriteLine();
                 }
 
@@ -150,9 +194,10 @@ public static class CleanGeoDataCommand
                     Console.WriteLine("│ Deleting States                                                 │");
                     Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-                    var deleted = await BulkDeleteEntityAsync(client, "ppds_state", "ppds_name", batchSize);
+                    var (deleted, errors) = await BulkDeleteEntityAsync(client, "ppds_state", batchSize, maxParallel);
                     totalDeleted += deleted;
-                    Console.WriteLine($"  Deleted {deleted:N0} states");
+                    totalErrors += errors;
+                    Console.WriteLine($"  Deleted {deleted:N0} states" + (errors > 0 ? $" ({errors:N0} errors)" : ""));
                     Console.WriteLine();
                 }
             }
@@ -160,21 +205,35 @@ public static class CleanGeoDataCommand
             totalStopwatch.Stop();
 
             Console.WriteLine("╔══════════════════════════════════════════════════════════════╗");
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("║              Clean Complete                                   ║");
+            if (totalErrors == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("║              Clean Complete                                   ║");
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("║              Clean Complete (with errors)                    ║");
+            }
             Console.ResetColor();
             Console.WriteLine("╚══════════════════════════════════════════════════════════════╝");
             Console.WriteLine();
             Console.WriteLine($"  Total deleted: {totalDeleted:N0}");
+            if (totalErrors > 0)
+                Console.WriteLine($"  Total errors: {totalErrors:N0}");
             Console.WriteLine($"  Total time: {totalStopwatch.Elapsed.TotalSeconds:F2}s");
             Console.WriteLine($"  Throughput: {totalDeleted / totalStopwatch.Elapsed.TotalSeconds:F1} deletes/second");
 
-            return 0;
+            return totalErrors > 0 ? 1 : 0;
         }
         catch (Exception ex)
         {
             CommandBase.WriteError($"Error: {ex.Message}");
             return 1;
+        }
+        finally
+        {
+            loggerFactory?.Dispose();
         }
     }
 
@@ -197,13 +256,12 @@ public static class CleanGeoDataCommand
         }
     }
 
-    private static async Task<int> BulkDeleteEntityAsync(
+    private static async Task<(int deleted, int errors)> BulkDeleteEntityAsync(
         ServiceClient client,
         string entityName,
-        string primaryNameAttribute,
-        int batchSize)
+        int batchSize,
+        int maxParallel)
     {
-        var totalDeleted = 0;
         var stopwatch = Stopwatch.StartNew();
 
         // Query all record IDs
@@ -229,60 +287,114 @@ public static class CleanGeoDataCommand
         Console.WriteLine($"found {allIds.Count:N0}");
 
         if (allIds.Count == 0)
-            return 0;
+            return (0, 0);
 
-        // Delete in batches
+        // Prepare batches
         var batches = allIds.Chunk(batchSize).ToList();
-        Console.WriteLine($"  Deleting in {batches.Count:N0} batches (batch size: {batchSize})...");
+        Console.WriteLine($"  Deleting in {batches.Count:N0} batches ({maxParallel} parallel)...");
 
-        var progressStopwatch = Stopwatch.StartNew();
+        // Thread-safe counters and progress tracking
+        var totalDeleted = 0;
+        var totalErrors = 0;
+        var totalProcessed = 0;
+        var overallStopwatch = Stopwatch.StartNew();
+        var lastProgressUpdate = DateTime.UtcNow;
+        var progressLock = new object();
 
-        foreach (var batch in batches)
-        {
-            var executeMultiple = new ExecuteMultipleRequest
+        // Process batches in parallel using the shared thread-safe client
+        await Parallel.ForEachAsync(
+            batches,
+            new ParallelOptions { MaxDegreeOfParallelism = maxParallel },
+            async (batch, ct) =>
             {
-                Requests = new OrganizationRequestCollection(),
-                Settings = new ExecuteMultipleSettings
+                var batchList = batch.ToArray();
+
+                // Use ExecuteMultipleRequest with DeleteRequest for standard tables
+                // (DeleteMultipleRequest only exists for elastic tables)
+                var executeMultiple = new ExecuteMultipleRequest
                 {
-                    ContinueOnError = true,
-                    ReturnResponses = false // Faster - don't need responses for delete
+                    Requests = new OrganizationRequestCollection(),
+                    Settings = new ExecuteMultipleSettings
+                    {
+                        ContinueOnError = true,
+                        ReturnResponses = false // Faster - don't need responses for delete
+                    }
+                };
+
+                foreach (var id in batchList)
+                {
+                    executeMultiple.Requests.Add(new DeleteRequest
+                    {
+                        Target = new EntityReference(entityName, id)
+                    });
                 }
-            };
 
-            foreach (var id in batch)
-            {
-                executeMultiple.Requests.Add(new DeleteRequest
+                try
                 {
-                    Target = new EntityReference(entityName, id)
-                });
-            }
+                    await client.ExecuteAsync(executeMultiple, ct);
 
-            try
-            {
-                await client.ExecuteAsync(executeMultiple);
-                totalDeleted += batch.Length;
-            }
-            catch (Exception ex)
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"    Batch error: {ex.Message}");
-                Console.ResetColor();
-            }
+                    Interlocked.Add(ref totalDeleted, batchList.Length);
+                    Interlocked.Add(ref totalProcessed, batchList.Length);
+                }
+                catch (Exception ex)
+                {
+                    // Extract detailed error info from Dataverse FaultException
+                    string errorDetail;
+                    if (ex is System.ServiceModel.FaultException<OrganizationServiceFault> fault)
+                    {
+                        errorDetail = $"[0x{fault.Detail.ErrorCode:X8}] {fault.Detail.Message}";
+                    }
+                    else
+                    {
+                        errorDetail = $"{ex.GetType().Name}: {ex.Message}";
+                    }
 
-            // Progress update every 5 seconds
-            if (progressStopwatch.Elapsed.TotalSeconds >= 5)
-            {
-                var pct = (double)totalDeleted / allIds.Count * 100;
-                var rate = totalDeleted / stopwatch.Elapsed.TotalSeconds;
-                Console.WriteLine($"    Progress: {totalDeleted:N0}/{allIds.Count:N0} ({pct:F1}%) - {rate:F1} rec/s");
-                progressStopwatch.Restart();
-            }
-        }
+                    lock (progressLock)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"    Batch error: {errorDetail}");
+                        Console.ResetColor();
+                    }
 
-        stopwatch.Stop();
-        var throughput = totalDeleted / stopwatch.Elapsed.TotalSeconds;
-        Console.WriteLine($"  Completed in {stopwatch.Elapsed.TotalSeconds:F2}s ({throughput:F1} rec/s)");
+                    Interlocked.Add(ref totalErrors, batchList.Length);
+                    Interlocked.Add(ref totalProcessed, batchList.Length);
+                }
 
-        return totalDeleted;
+                // Progress update (rate-limited to avoid console spam)
+                var now = DateTime.UtcNow;
+                bool shouldUpdate;
+                lock (progressLock)
+                {
+                    shouldUpdate = (now - lastProgressUpdate).TotalSeconds >= 3;
+                    if (shouldUpdate) lastProgressUpdate = now;
+                }
+
+                if (shouldUpdate)
+                {
+                    var processed = Interlocked.CompareExchange(ref totalProcessed, 0, 0);
+                    var elapsed = overallStopwatch.Elapsed;
+                    var pct = (double)processed / allIds.Count * 100;
+                    var rate = elapsed.TotalSeconds > 0.1 ? processed / elapsed.TotalSeconds : 0;
+                    var remaining = rate > 0.001 ? (allIds.Count - processed) / rate : 0;
+                    var etaDisplay = remaining > 0 ? TimeSpan.FromSeconds(remaining).ToString(@"mm\:ss") : "--:--";
+
+                    lock (progressLock)
+                    {
+                        Console.WriteLine($"    Progress: {processed:N0}/{allIds.Count:N0} ({pct:F1}%) " +
+                                          $"| {rate:F0}/s " +
+                                          $"| Elapsed: {elapsed:mm\\:ss} " +
+                                          $"| ETA: {etaDisplay}");
+                    }
+                }
+            });
+
+        // Final progress
+        var finalElapsed = overallStopwatch.Elapsed;
+        var finalRate = finalElapsed.TotalSeconds > 0.1 ? totalProcessed / finalElapsed.TotalSeconds : 0;
+        Console.WriteLine($"    Final: {totalProcessed:N0}/{allIds.Count:N0} " +
+                          $"| {finalRate:F0}/s overall " +
+                          $"| {finalElapsed:mm\\:ss} elapsed");
+
+        return (totalDeleted, totalErrors);
     }
 }
