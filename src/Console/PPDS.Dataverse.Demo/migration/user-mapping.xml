@@ -1,31 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  User Mapping File for ppds-migrate CLI
-
-  Maps source system user GUIDs to target system users.
-  Used when migrating data between environments where user IDs differ.
-
-  Usage:
-    ppds-migrate import --data data.zip --user-mapping migration/user-mapping.xml
-
-  Format:
-    <usermappings>
-      <usermapping sourceUserId="..." targetUserId="..." />
-    </usermappings>
-
-  Notes:
-    - Source IDs come from the export environment
-    - Target IDs should exist in the import environment
-    - Unmapped users will retain their original ID (may cause lookup failures)
-    - Use 'systemuser' entity exports to identify user IDs
--->
 <usermappings>
   <!--
-    Example mappings for cross-tenant migration:
-    Map service accounts and key users from source to target tenant.
+    User Mapping File for ppds-migrate CLI
+
+    Maps source system user GUIDs to target system users.
+    Used when migrating data between environments where user IDs differ.
+
+    Usage: ppds-migrate import with user-mapping option
+
+    Notes:
+      Source IDs come from the export environment
+      Target IDs should exist in the import environment
+      Unmapped users will retain their original ID (may cause lookup failures)
   -->
 
-  <!-- System Administrator (example - replace with actual GUIDs) -->
+  <!-- System Administrator (example: replace with actual GUIDs) -->
   <usermapping
     sourceUserId="43ab23b2-87d7-f011-8543-000d3a3b9cba"
     targetUserId="00000000-0000-0000-0000-000000000001"
@@ -42,21 +31,4 @@
     sourceUserId="51935cec-88d7-f011-8543-000d3a3b9cba"
     targetUserId="00000000-0000-0000-0000-000000000003"
     comment="Power Automate Flow Owner" />
-
-  <!--
-    To generate mappings from source environment:
-
-    1. Export systemuser data:
-       ppds-migrate schema generate -e systemuser -o users-schema.xml
-       ppds-migrate export --schema users-schema.xml --output users.zip
-
-    2. Extract and identify users by name/email
-
-    3. Query target environment for corresponding user IDs:
-       SELECT systemuserid, fullname, internalemailaddress
-       FROM systemuser
-       WHERE isdisabled = 0
-
-    4. Create mappings based on email or name matching
-  -->
 </usermappings>

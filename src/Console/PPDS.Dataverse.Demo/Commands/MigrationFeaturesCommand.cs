@@ -191,71 +191,65 @@ public static class MigrationFeaturesCommand
         Console.WriteLine();
     }
 
-    private static async Task DemoAttributeFiltering(string connectionString, bool verbose)
+    private static Task DemoAttributeFiltering(string connectionString, bool verbose)
     {
+        // Parameters kept for consistent signature, but not used since this is info-only
+        _ = connectionString;
+        _ = verbose;
+
         Console.WriteLine("┌─────────────────────────────────────────────────────────────────┐");
         Console.WriteLine("│  Feature 2: Attribute Filtering                                │");
         Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
         Console.WriteLine();
-        Console.WriteLine("  Control which attributes are exported/imported:");
+        Console.WriteLine("  Control which attributes are included in the schema.");
+        Console.WriteLine("  Filtering happens during SCHEMA GENERATION, not export.");
+        Console.WriteLine();
+
+        Console.WriteLine("  Command: ppds-migrate schema generate");
         Console.WriteLine();
 
         // --include-attributes
+        Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine("  --include-attributes name,accountid,parentaccountid");
+        Console.ResetColor();
         Console.ForegroundColor = ConsoleColor.DarkGray;
-        Console.WriteLine("    Export ONLY these specific attributes");
+        Console.WriteLine("    Include ONLY these specific attributes in schema");
         Console.ResetColor();
         Console.WriteLine();
 
         // --exclude-attributes
+        Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine("  --exclude-attributes createdon,modifiedon,createdby,modifiedby");
+        Console.ResetColor();
         Console.ForegroundColor = ConsoleColor.DarkGray;
-        Console.WriteLine("    Export all EXCEPT these audit fields");
+        Console.WriteLine("    Exclude these audit fields from schema");
         Console.ResetColor();
         Console.WriteLine();
 
         // --exclude-patterns
+        Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine("  --exclude-patterns *versionnumber,*utcconversion*,override*");
+        Console.ResetColor();
         Console.ForegroundColor = ConsoleColor.DarkGray;
         Console.WriteLine("    Exclude attributes matching wildcard patterns");
-        Console.WriteLine("    Useful for system fields that shouldn't be migrated");
         Console.ResetColor();
         Console.WriteLine();
 
-        // Demo export with filtering
-        Console.WriteLine("  Example Commands:");
+        // Example workflow
+        Console.WriteLine("  Workflow:");
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine("  ─────────────────────────────────────────────────────────────");
+        Console.WriteLine("  # 1. Generate schema with filtering");
+        Console.WriteLine("  ppds-migrate schema generate -e account,contact \\");
+        Console.WriteLine("    --exclude-attributes createdon,modifiedon,createdby,modifiedby \\");
+        Console.WriteLine("    --exclude-patterns *versionnumber -o filtered-schema.xml");
+        Console.WriteLine();
+        Console.WriteLine("  # 2. Export uses the filtered schema");
+        Console.WriteLine("  ppds-migrate export --schema filtered-schema.xml --output data.zip");
+        Console.ResetColor();
         Console.WriteLine();
 
-        var filterOutput = Path.Combine(AppContext.BaseDirectory, "filtered-export.zip");
-
-        Console.Write("  Running filtered export... ");
-        var result = await RunCliAsync(
-            $"export --schema \"{SchemaPath}\" --output \"{filterOutput}\" " +
-            $"--exclude-attributes createdon,modifiedon,createdby,modifiedby " +
-            $"--exclude-patterns *versionnumber " +
-            $"--connection \"{connectionString}\"",
-            verbose);
-
-        if (result == 0)
-        {
-            CommandBase.WriteSuccess("Done");
-            Console.WriteLine();
-            InspectFilteredData(filterOutput);
-
-            // Cleanup
-            if (File.Exists(filterOutput))
-            {
-                File.Delete(filterOutput);
-            }
-        }
-        else
-        {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("Skipped (export requires connection)");
-            Console.ResetColor();
-        }
-
-        Console.WriteLine();
+        return Task.CompletedTask;
     }
 
     private static void DemoUserMapping()
