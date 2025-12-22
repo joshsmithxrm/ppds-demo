@@ -442,10 +442,11 @@ solutions/**/pluginpackages/**/package/*.nupkg
 .$*.drawio.bkp
 
 # Migration artifacts (ppds-migrate CLI outputs)
-# Temp extraction folders (but NOT cmt-extracted/ which is reference data)
-**/migration/test-extracted/
+# Extracted data folders (these contain environment-specific data)
 **/migration/*-extracted/
-!**/migration/cmt-extracted/
+# CMT exports (environment-specific, use sdk/docs/M2M_IMPLEMENTATION_SPEC.md for format reference)
+**/migration/schema(cmt).xml
+**/migration/data(cmt).zip
 
 # Generated schema files (temp outputs from schema generation)
 generated-*.xml
