@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.CommandLine;
 using System.Diagnostics;
 using System.Globalization;
@@ -8,11 +7,12 @@ using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Query;
+using PPDS.Dataverse.BulkOperations;
+using PPDS.Dataverse.Progress;
 
 namespace PPDS.Dataverse.Demo.Commands;
 
@@ -84,29 +84,15 @@ public static class LoadGeoDataCommand
         batchSize = Math.Clamp(batchSize, 1, 1000);
         maxParallel = Math.Clamp(maxParallel, 1, 16);
 
-        // Configure verbose logging if requested - factory must outlive the operation
-        ILoggerFactory? loggerFactory = null;
-        ILogger? logger = null;
         if (verbose)
         {
             Console.WriteLine("  Verbose logging enabled");
             Console.WriteLine();
-
-            loggerFactory = LoggerFactory.Create(builder =>
-            {
-                builder
-                    .SetMinimumLevel(LogLevel.Debug)
-                    .AddSimpleConsole(options =>
-                    {
-                        options.SingleLine = true;
-                        options.TimestampFormat = "HH:mm:ss.fff ";
-                    });
-            });
-            logger = loggerFactory.CreateLogger<ServiceClient>();
         }
 
-        using var host = CommandBase.CreateHost([]);
-        var config = host.Services.GetRequiredService<IConfiguration>();
+        // Get connection string from configuration
+        using var configHost = CommandBase.CreateHost([]);
+        var config = configHost.Services.GetRequiredService<IConfiguration>();
         var (connectionString, envName) = CommandBase.ResolveEnvironment(config, "Dev");
 
         if (string.IsNullOrEmpty(connectionString))
@@ -114,6 +100,10 @@ public static class LoadGeoDataCommand
             CommandBase.WriteError("Connection not found. Configure Environments:Dev:ConnectionString in user-secrets.");
             return 1;
         }
+
+        // Create host with SDK services configured for this environment
+        using var host = CommandBase.CreateHostForEnvironment(connectionString, envName, maxParallel, verbose);
+        var bulkExecutor = host.Services.GetRequiredService<IBulkOperationExecutor>();
 
         var totalStopwatch = Stopwatch.StartNew();
 
@@ -153,14 +143,14 @@ public static class LoadGeoDataCommand
             Console.WriteLine("│ Phase 2: Connect to Dataverse                                   │");
             Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-            using var client = verbose && logger != null
-                ? new ServiceClient(connectionString, logger)
-                : new ServiceClient(connectionString);
+            // Create a ServiceClient for state operations (uses SDK pool internally for ZIP codes)
+            using var client = new ServiceClient(connectionString);
             if (!client.IsReady)
             {
                 CommandBase.WriteError($"Connection failed: {client.LastError}");
                 return 1;
             }
+            client.EnableAffinityCookie = false;
 
             Console.WriteLine($"  Connected to: {client.ConnectedOrgFriendlyName} ({envName})");
             Console.WriteLine($"  Batch size: {batchSize}, Parallel batches: {maxParallel}");
@@ -204,51 +194,69 @@ public static class LoadGeoDataCommand
             }
 
             // ═══════════════════════════════════════════════════════════════════
-            // PHASE 4: Load ZIP Codes
+            // PHASE 4: Load ZIP Codes (using PPDS.Dataverse SDK)
             // ═══════════════════════════════════════════════════════════════════
             Console.WriteLine("┌─────────────────────────────────────────────────────────────────┐");
             Console.WriteLine("│ Phase 4: Load ZIP Codes                                         │");
             Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-            var zipStopwatch = Stopwatch.StartNew();
+            // Build entities for upsert
+            var (entities, skipped) = BuildZipCodeEntities(zipCodes, stateMap, verbose);
 
-            var (created, updated, errors, skipped) = await LoadZipCodesAsync(connectionString, zipCodes, stateMap, batchSize, maxParallel, verbose, logger);
-
-            zipStopwatch.Stop();
-
-            Console.WriteLine();
-            Console.WriteLine($"  ZIP code loading completed in {zipStopwatch.Elapsed.TotalSeconds:F2}s");
-            Console.WriteLine($"    Created: {created:N0}");
-            Console.WriteLine($"    Updated: {updated:N0}");
             if (skipped > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"    Skipped: {skipped:N0} (unknown state)");
-                Console.ResetColor();
-            }
-            if (errors > 0)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"    Errors: {errors:N0}");
+                Console.WriteLine($"  Skipped {skipped} records (unknown state)");
                 Console.ResetColor();
             }
 
-            var throughput = zipCodes.Count / zipStopwatch.Elapsed.TotalSeconds;
+            Console.WriteLine($"  Processing {entities.Count:N0} ZIP codes...");
+
+            var options = new BulkOperationOptions
+            {
+                BatchSize = batchSize,
+                MaxParallelBatches = maxParallel
+            };
+
+            var progress = new Progress<ProgressSnapshot>(s =>
+            {
+                Console.WriteLine($"    Progress: {s.Processed:N0}/{s.Total:N0} ({s.PercentComplete:F1}%) " +
+                    $"| {s.RatePerSecond:F0}/s | {s.Elapsed:mm\\:ss} elapsed | ETA: {s.EstimatedRemaining:mm\\:ss}");
+            });
+
+            var result = await bulkExecutor.UpsertMultipleAsync("ppds_zipcode", entities, options, progress);
+
+            Console.WriteLine();
+            Console.WriteLine($"  ZIP code loading completed in {result.Duration.TotalSeconds:F2}s");
+            Console.WriteLine($"    Succeeded: {result.SuccessCount:N0}");
+            Console.WriteLine($"    Failed: {result.FailureCount:N0}");
+
+            if (result.FailureCount > 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                foreach (var error in result.Errors.Take(5))
+                {
+                    Console.WriteLine($"      Error at index {error.Index}: {error.Message}");
+                }
+                if (result.Errors.Count > 5)
+                {
+                    Console.WriteLine($"      ... and {result.Errors.Count - 5} more errors");
+                }
+                Console.ResetColor();
+            }
+
+            var throughput = result.Duration.TotalSeconds > 0 ? result.SuccessCount / result.Duration.TotalSeconds : 0;
             Console.WriteLine($"    Throughput: {throughput:F1} records/second");
             Console.WriteLine();
 
-            PrintSummary(totalStopwatch, states.Count, created, updated, errors, skipped);
+            PrintSummary(totalStopwatch, states.Count, result.SuccessCount, 0, result.FailureCount, skipped);
 
-            return errors > 0 ? 1 : 0;
+            return result.FailureCount > 0 ? 1 : 0;
         }
         catch (Exception ex)
         {
             CommandBase.WriteError($"Error: {ex.Message}");
             return 1;
-        }
-        finally
-        {
-            loggerFactory?.Dispose();
         }
     }
 
@@ -384,24 +392,23 @@ public static class LoadGeoDataCommand
         return stateMap;
     }
 
-    private static async Task<(int created, int updated, int errors, int skipped)> LoadZipCodesAsync(
-        string connectionString,
+    /// <summary>
+    /// Builds Entity objects for ZIP code upsert from CSV records.
+    /// Normalizes, deduplicates, and maps state references.
+    /// </summary>
+    private static (List<Entity> Entities, int Skipped) BuildZipCodeEntities(
         List<ZipCodeRecord> zipCodes,
         Dictionary<string, Guid> stateMap,
-        int batchSize,
-        int maxParallel,
-        bool verbose,
-        ILogger? logger)
+        bool verbose)
     {
         // Normalize and deduplicate by ZIP code (CSV may contain duplicates or whitespace)
-        // Trim whitespace to ensure consistent matching with Dataverse alternate key
         var uniqueZipCodes = zipCodes
             .Select(z => new { Record = z, NormalizedZip = z.Zip?.Trim() ?? "" })
             .Where(x => !string.IsNullOrEmpty(x.NormalizedZip))
             .GroupBy(x => x.NormalizedZip)
-            .Select(g => {
+            .Select(g =>
+            {
                 var first = g.First();
-                // Update the record with normalized ZIP
                 first.Record.Zip = first.NormalizedZip;
                 return first.Record;
             })
@@ -412,7 +419,6 @@ public static class LoadGeoDataCommand
         {
             Console.WriteLine($"  Deduplicated: {duplicateCount:N0} duplicate/empty ZIP codes removed");
 
-            // Show sample duplicates for debugging
             if (verbose)
             {
                 var duplicates = zipCodes
@@ -421,9 +427,9 @@ public static class LoadGeoDataCommand
                     .Take(5)
                     .ToList();
 
-                if (duplicates.Any())
+                if (duplicates.Count > 0)
                 {
-                    Console.WriteLine($"    Sample duplicates:");
+                    Console.WriteLine("    Sample duplicates:");
                     foreach (var dup in duplicates)
                     {
                         Console.WriteLine($"      '{dup.Key}' appears {dup.Count()} times");
@@ -432,7 +438,7 @@ public static class LoadGeoDataCommand
             }
         }
 
-        // Build all entities upfront
+        // Build entities
         var entities = new List<Entity>();
         var skippedCount = 0;
 
@@ -456,179 +462,7 @@ public static class LoadGeoDataCommand
             entities.Add(entity);
         }
 
-        if (skippedCount > 0)
-        {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"  Skipped {skippedCount} records (unknown state)");
-            Console.ResetColor();
-        }
-
-        // Pre-flight validation: verify no duplicate keys
-        var entityKeys = entities
-            .Select(e => e.KeyAttributes.TryGetValue("ppds_code", out var k) ? k?.ToString() : null)
-            .Where(k => k != null)
-            .ToList();
-        var entityDuplicates = entityKeys
-            .GroupBy(k => k)
-            .Where(g => g.Count() > 1)
-            .ToList();
-
-        if (entityDuplicates.Any())
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"  ERROR: {entityDuplicates.Count} duplicate ppds_code values:");
-            foreach (var dup in entityDuplicates.Take(5))
-            {
-                Console.WriteLine($"    '{dup.Key}' x{dup.Count()}");
-            }
-            Console.ResetColor();
-            return (0, 0, entities.Count, skippedCount);
-        }
-
-        // Helper for batch error diagnostics
-        string GetCompositeKey(Entity e) => e.KeyAttributes.TryGetValue("ppds_code", out var k) ? k?.ToString() ?? "(null)" : "(not set)";
-
-        var batches = entities.Chunk(batchSize).ToList();
-        Console.WriteLine($"  Processing {entities.Count:N0} ZIP codes in {batches.Count:N0} batches ({maxParallel} parallel)...");
-
-        // Thread-safe counters and progress tracking
-        var totalCreated = 0;
-        var totalUpdated = 0;
-        var totalErrors = 0;
-        var totalProcessed = 0;
-        var overallStopwatch = Stopwatch.StartNew();
-        var lastProgressUpdate = DateTime.UtcNow;
-        var progressLock = new object();
-
-        // Create a SINGLE shared client - ServiceClient is thread-safe for concurrent requests
-        // DO NOT create clients inside the parallel loop (causes OAuth rate limiting)
-        using var client = verbose && logger != null
-            ? new ServiceClient(connectionString, logger)
-            : new ServiceClient(connectionString);
-        if (!client.IsReady)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"  Connection failed: {client.LastError}");
-            Console.ResetColor();
-            return (0, 0, entities.Count, skippedCount);
-        }
-
-        // Process batches in parallel using the shared thread-safe client
-        await Parallel.ForEachAsync(
-            batches,
-            new ParallelOptions { MaxDegreeOfParallelism = maxParallel },
-            async (batch, ct) =>
-            {
-                var batchList = batch.ToList();
-                var targets = new EntityCollection(batchList) { EntityName = "ppds_zipcode" };
-                var request = new UpsertMultipleRequest { Targets = targets };
-
-                try
-                {
-                    var response = (UpsertMultipleResponse)await client.ExecuteAsync(request, ct);
-
-                    // UpsertMultipleResponse.Results contains UpsertResponse objects with RecordCreated flag
-                    int created = 0, updated = 0;
-                    foreach (var result in response.Results)
-                    {
-                        if (result is UpsertResponse upsertResult)
-                        {
-                            if (upsertResult.RecordCreated)
-                                created++;
-                            else
-                                updated++;
-                        }
-                    }
-
-                    Interlocked.Add(ref totalCreated, created);
-                    Interlocked.Add(ref totalUpdated, updated);
-                    Interlocked.Add(ref totalProcessed, batchList.Count);
-                }
-                catch (Exception ex)
-                {
-                    // Extract detailed error info from Dataverse FaultException
-                    string errorDetail;
-                    if (ex is System.ServiceModel.FaultException<OrganizationServiceFault> fault)
-                    {
-                        errorDetail = $"[0x{fault.Detail.ErrorCode:X8}] {fault.Detail.Message}";
-                    }
-                    else
-                    {
-                        errorDetail = $"{ex.GetType().Name}: {ex.Message}";
-                    }
-
-                    // Check for duplicate composite keys within this batch
-                    var batchKeys = batchList
-                        .Select(e => GetCompositeKey(e))
-                        .Where(k => !string.IsNullOrEmpty(k))
-                        .ToList();
-                    var duplicateKeys = batchKeys
-                        .GroupBy(k => k)
-                        .Where(g => g.Count() > 1)
-                        .ToList();
-
-                    lock (progressLock)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"    Batch error: {errorDetail}");
-
-                        if (duplicateKeys.Any())
-                        {
-                            Console.WriteLine($"    Found {duplicateKeys.Count} duplicate composite keys in batch:");
-                            foreach (var dup in duplicateKeys.Take(5))
-                            {
-                                Console.WriteLine($"      '{dup.Key}' x{dup.Count()}");
-                            }
-                        }
-                        else if (ex.Message.Contains("same key"))
-                        {
-                            // No duplicates in batch - issue might be cross-batch duplicates
-                            // processed in parallel, or existing data in Dataverse
-                            Console.WriteLine($"    No duplicates in this batch ({batchKeys.Count} keys)");
-                            Console.WriteLine($"    First 5 keys: {string.Join(", ", batchKeys.Take(5))}");
-                        }
-                        Console.ResetColor();
-                    }
-                    Interlocked.Add(ref totalErrors, batchList.Count);
-                    Interlocked.Add(ref totalProcessed, batchList.Count);
-                }
-
-                // Progress update (rate-limited to avoid console spam)
-                var now = DateTime.UtcNow;
-                bool shouldUpdate;
-                lock (progressLock)
-                {
-                    shouldUpdate = (now - lastProgressUpdate).TotalSeconds >= 3;
-                    if (shouldUpdate) lastProgressUpdate = now;
-                }
-
-                if (shouldUpdate)
-                {
-                    var processed = Interlocked.CompareExchange(ref totalProcessed, 0, 0);
-                    var elapsed = overallStopwatch.Elapsed;
-                    var pct = (double)processed / entities.Count * 100;
-                    var rate = elapsed.TotalSeconds > 0.1 ? processed / elapsed.TotalSeconds : 0;
-                    var remaining = rate > 0.001 ? (entities.Count - processed) / rate : 0;
-                    var etaDisplay = remaining > 0 ? TimeSpan.FromSeconds(remaining).ToString(@"mm\:ss") : "--:--";
-
-                    lock (progressLock)
-                    {
-                        Console.WriteLine($"    Progress: {processed:N0}/{entities.Count:N0} ({pct:F1}%) " +
-                                          $"| {rate:F0}/s " +
-                                          $"| Elapsed: {elapsed:mm\\:ss} " +
-                                          $"| ETA: {etaDisplay}");
-                    }
-                }
-            });
-
-        // Final progress
-        var finalElapsed = overallStopwatch.Elapsed;
-        var finalRate = finalElapsed.TotalSeconds > 0.1 ? totalProcessed / finalElapsed.TotalSeconds : 0;
-        Console.WriteLine($"    Final: {totalProcessed:N0}/{entities.Count:N0} " +
-                          $"| {finalRate:F0}/s overall " +
-                          $"| {finalElapsed:mm\\:ss} elapsed");
-
-        return (totalCreated, totalUpdated, totalErrors, skippedCount);
+        return (entities, skippedCount);
     }
 
     // CSV record class matching GitHub free_zipcode_data format

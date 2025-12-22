@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using PPDS.Dataverse.DependencyInjection;
 using PPDS.Dataverse.Pooling;
 
@@ -20,6 +21,42 @@ public abstract class CommandBase
             .ConfigureServices((context, services) =>
             {
                 services.AddDataverseConnectionPool(context.Configuration);
+            })
+            .Build();
+    }
+
+    /// <summary>
+    /// Creates a host configured with a specific connection string for bulk operations.
+    /// Use this when targeting a specific environment rather than the default pool.
+    /// </summary>
+    /// <param name="connectionString">The Dataverse connection string.</param>
+    /// <param name="name">Display name for the connection.</param>
+    /// <param name="maxParallelBatches">Maximum parallel batches for bulk operations.</param>
+    /// <param name="verbose">Enable debug-level logging for PPDS.Dataverse namespace.</param>
+    public static IHost CreateHostForEnvironment(string connectionString, string name, int maxParallelBatches = 4, bool verbose = false)
+    {
+        return Host.CreateDefaultBuilder([])
+            .ConfigureLogging(logging =>
+            {
+                if (verbose)
+                {
+                    // Enable debug logging for PPDS.Dataverse namespace
+                    logging.AddFilter("PPDS.Dataverse", LogLevel.Debug);
+                    logging.AddSimpleConsole(options =>
+                    {
+                        options.SingleLine = true;
+                        options.TimestampFormat = "HH:mm:ss.fff ";
+                    });
+                }
+            })
+            .ConfigureServices((context, services) =>
+            {
+                services.AddDataverseConnectionPool(options =>
+                {
+                    options.Connections.Add(new DataverseConnection(name, connectionString));
+                    options.Pool.DisableAffinityCookie = true;
+                    options.BulkOperations.MaxParallelBatches = maxParallelBatches;
+                });
             })
             .Build();
     }
