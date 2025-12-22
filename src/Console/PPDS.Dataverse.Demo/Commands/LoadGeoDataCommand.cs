@@ -393,11 +393,23 @@ public static class LoadGeoDataCommand
         bool verbose,
         ILogger? logger)
     {
+        // Deduplicate by ZIP code (CSV may contain duplicates) - keep first occurrence
+        var uniqueZipCodes = zipCodes
+            .GroupBy(z => z.Zip)
+            .Select(g => g.First())
+            .ToList();
+
+        var duplicateCount = zipCodes.Count - uniqueZipCodes.Count;
+        if (duplicateCount > 0)
+        {
+            Console.WriteLine($"  Deduplicated: {duplicateCount:N0} duplicate ZIP codes removed");
+        }
+
         // Build all entities upfront
         var entities = new List<Entity>();
         var skippedCount = 0;
 
-        foreach (var zip in zipCodes)
+        foreach (var zip in uniqueZipCodes)
         {
             if (!stateMap.TryGetValue(zip.StateId, out var stateId))
             {
