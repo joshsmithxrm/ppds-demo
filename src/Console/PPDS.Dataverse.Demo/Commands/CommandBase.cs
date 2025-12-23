@@ -26,14 +26,13 @@ public abstract class CommandBase
     }
 
     /// <summary>
-    /// Creates a host configured with a specific connection string for bulk operations.
-    /// Use this when targeting a specific environment rather than the default pool.
+    /// Creates a host configured for bulk operations using connections from Dataverse:Connections:* config.
+    /// Supports multiple service principals for connection pooling and quota multiplying.
     /// </summary>
-    /// <param name="connectionString">The Dataverse connection string.</param>
-    /// <param name="name">Display name for the connection.</param>
+    /// <param name="config">The configuration instance containing Dataverse:Connections:* settings.</param>
     /// <param name="parallelism">Optional max parallel batches. If null, uses SDK default.</param>
     /// <param name="verbose">Enable debug-level logging for PPDS.Dataverse namespace.</param>
-    public static IHost CreateHostForEnvironment(string connectionString, string name, int? parallelism = null, bool verbose = false)
+    public static IHost CreateHostForBulkOperations(IConfiguration config, int? parallelism = null, bool verbose = false)
     {
         return Host.CreateDefaultBuilder([])
             .ConfigureLogging(logging =>
@@ -51,9 +50,12 @@ public abstract class CommandBase
             })
             .ConfigureServices((context, services) =>
             {
-                services.AddDataverseConnectionPool(options =>
+                // Read connections from Dataverse:Connections:* config section
+                services.AddDataverseConnectionPool(config);
+
+                // Apply overrides (SDK defaults to MaxPoolSize=50)
+                services.Configure<DataverseOptions>(options =>
                 {
-                    options.Connections.Add(new DataverseConnection(name, connectionString));
                     options.Pool.DisableAffinityCookie = true;
                     if (parallelism.HasValue)
                     {

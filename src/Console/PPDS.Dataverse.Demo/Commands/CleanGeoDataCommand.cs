@@ -70,27 +70,28 @@ public static class CleanGeoDataCommand
             Console.WriteLine();
         }
 
-        // Get connection string from configuration
+        // Get configuration
         using var configHost = CommandBase.CreateHost([]);
         var config = configHost.Services.GetRequiredService<IConfiguration>();
-        var (connectionString, envName) = CommandBase.ResolveEnvironment(config, "Dev");
 
-        if (string.IsNullOrEmpty(connectionString))
-        {
-            CommandBase.WriteError("Connection not found. Configure Environments:Dev:ConnectionString in user-secrets.");
-            return 1;
-        }
-
-        // Create host with SDK services configured for this environment
-        using var host = CommandBase.CreateHostForEnvironment(connectionString, envName, parallelism, verbose);
+        // Create host with SDK services - reads Dataverse:Connections:* for pooling
+        using var host = CommandBase.CreateHostForBulkOperations(config, parallelism, verbose);
         var pool = host.Services.GetRequiredService<IDataverseConnectionPool>();
         var bulkExecutor = host.Services.GetRequiredService<IBulkOperationExecutor>();
+
+        if (!pool.IsEnabled)
+        {
+            CommandBase.WriteError("Connection pool not configured. Configure Dataverse:Connections:* in user-secrets.");
+            return 1;
+        }
 
         var totalStopwatch = Stopwatch.StartNew();
 
         try
         {
-            Console.WriteLine($"  Connected to: {envName}");
+            // Get connection info for display
+            await using var displayClient = await pool.GetClientAsync();
+            Console.WriteLine($"  Connected to: {displayClient.ConnectedOrgFriendlyName} (Pool: {pool.Statistics.TotalConnections} connections)");
             Console.WriteLine();
 
             // ═══════════════════════════════════════════════════════════════════

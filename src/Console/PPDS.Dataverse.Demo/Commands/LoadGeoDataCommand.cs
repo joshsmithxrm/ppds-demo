@@ -7,11 +7,11 @@ using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Query;
 using PPDS.Dataverse.BulkOperations;
+using PPDS.Dataverse.Pooling;
 using PPDS.Dataverse.Progress;
 
 namespace PPDS.Dataverse.Demo.Commands;
@@ -87,20 +87,20 @@ public static class LoadGeoDataCommand
             Console.WriteLine();
         }
 
-        // Get connection string from configuration
+        // Get configuration
         using var configHost = CommandBase.CreateHost([]);
         var config = configHost.Services.GetRequiredService<IConfiguration>();
-        var (connectionString, envName) = CommandBase.ResolveEnvironment(config, "Dev");
 
-        if (string.IsNullOrEmpty(connectionString))
+        // Create host with SDK services - reads Dataverse:Connections:* for pooling
+        using var host = CommandBase.CreateHostForBulkOperations(config, parallelism, verbose);
+        var pool = host.Services.GetRequiredService<IDataverseConnectionPool>();
+        var bulkExecutor = host.Services.GetRequiredService<IBulkOperationExecutor>();
+
+        if (!pool.IsEnabled)
         {
-            CommandBase.WriteError("Connection not found. Configure Environments:Dev:ConnectionString in user-secrets.");
+            CommandBase.WriteError("Connection pool not configured. Configure Dataverse:Connections:* in user-secrets.");
             return 1;
         }
-
-        // Create host with SDK services configured for this environment
-        using var host = CommandBase.CreateHostForEnvironment(connectionString, envName, parallelism, verbose);
-        var bulkExecutor = host.Services.GetRequiredService<IBulkOperationExecutor>();
 
         var totalStopwatch = Stopwatch.StartNew();
 
@@ -140,16 +140,10 @@ public static class LoadGeoDataCommand
             Console.WriteLine("│ Phase 2: Connect to Dataverse                                   │");
             Console.WriteLine("└─────────────────────────────────────────────────────────────────┘");
 
-            // Create a ServiceClient for state operations (uses SDK pool internally for ZIP codes)
-            using var client = new ServiceClient(connectionString);
-            if (!client.IsReady)
-            {
-                CommandBase.WriteError($"Connection failed: {client.LastError}");
-                return 1;
-            }
-            client.EnableAffinityCookie = false;
+            // Get a client from the pool for state operations
+            await using var pooledClient = await pool.GetClientAsync();
 
-            Console.WriteLine($"  Connected to: {client.ConnectedOrgFriendlyName} ({envName})");
+            Console.WriteLine($"  Connected to: {pooledClient.ConnectedOrgFriendlyName} (Pool: {pool.Statistics.TotalConnections} connections)");
             Console.WriteLine();
 
             // ═══════════════════════════════════════════════════════════════════
@@ -176,7 +170,7 @@ public static class LoadGeoDataCommand
             Console.WriteLine($"  Found {states.Count} unique states/territories");
 
             // Check existing states and create missing ones
-            var stateMap = await LoadOrCreateStatesAsync(client, states);
+            var stateMap = await LoadOrCreateStatesAsync(pooledClient, states);
 
             stateStopwatch.Stop();
             Console.WriteLine($"  State loading completed in {stateStopwatch.Elapsed.TotalSeconds:F2}s");
@@ -325,7 +319,7 @@ public static class LoadGeoDataCommand
     }
 
     private static async Task<Dictionary<string, Guid>> LoadOrCreateStatesAsync(
-        ServiceClient client,
+        IPooledClient client,
         List<StateRecord> states)
     {
         var stateMap = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
