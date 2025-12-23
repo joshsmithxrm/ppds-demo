@@ -37,11 +37,6 @@ public static class LoadGeoDataCommand
             "--limit",
             "Limit number of ZIP codes to load (for testing)");
 
-        var batchSizeOption = new Option<int>(
-            "--batch-size",
-            () => 1000,
-            "Batch size for ExecuteMultiple requests (1-1000)");
-
         var skipDownloadOption = new Option<bool>(
             "--skip-download",
             "Use cached data file (skip download)");
@@ -50,39 +45,29 @@ public static class LoadGeoDataCommand
             "--states-only",
             "Only load states (skip ZIP codes)");
 
-        var parallelOption = new Option<int>(
-            "--parallel",
-            () => 4,
-            "Number of parallel batches (1=sequential, 4-8 recommended)");
-
         var verboseOption = new Option<bool>(
             ["--verbose", "-v"],
             "Enable verbose logging (shows SDK debug output)");
 
         command.AddOption(limitOption);
-        command.AddOption(batchSizeOption);
         command.AddOption(skipDownloadOption);
         command.AddOption(statesOnlyOption);
-        command.AddOption(parallelOption);
         command.AddOption(verboseOption);
 
-        command.SetHandler(async (int? limit, int batchSize, bool skipDownload, bool statesOnly, int parallel, bool verbose) =>
+        command.SetHandler(async (int? limit, bool skipDownload, bool statesOnly, bool verbose) =>
         {
-            Environment.ExitCode = await ExecuteAsync(limit, batchSize, skipDownload, statesOnly, parallel, verbose);
-        }, limitOption, batchSizeOption, skipDownloadOption, statesOnlyOption, parallelOption, verboseOption);
+            Environment.ExitCode = await ExecuteAsync(limit, skipDownload, statesOnly, verbose);
+        }, limitOption, skipDownloadOption, statesOnlyOption, verboseOption);
 
         return command;
     }
 
-    public static async Task<int> ExecuteAsync(int? limit, int batchSize, bool skipDownload, bool statesOnly, int maxParallel = 4, bool verbose = false)
+    public static async Task<int> ExecuteAsync(int? limit, bool skipDownload, bool statesOnly, bool verbose = false)
     {
         Console.WriteLine("╔══════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║       Load Geographic Data for Volume Testing                ║");
         Console.WriteLine("╚══════════════════════════════════════════════════════════════╝");
         Console.WriteLine();
-
-        batchSize = Math.Clamp(batchSize, 1, 1000);
-        maxParallel = Math.Clamp(maxParallel, 1, 16);
 
         if (verbose)
         {
@@ -102,7 +87,7 @@ public static class LoadGeoDataCommand
         }
 
         // Create host with SDK services configured for this environment
-        using var host = CommandBase.CreateHostForEnvironment(connectionString, envName, maxParallel, verbose);
+        using var host = CommandBase.CreateHostForEnvironment(connectionString, envName, verbose: verbose);
         var bulkExecutor = host.Services.GetRequiredService<IBulkOperationExecutor>();
 
         var totalStopwatch = Stopwatch.StartNew();
@@ -153,7 +138,6 @@ public static class LoadGeoDataCommand
             client.EnableAffinityCookie = false;
 
             Console.WriteLine($"  Connected to: {client.ConnectedOrgFriendlyName} ({envName})");
-            Console.WriteLine($"  Batch size: {batchSize}, Parallel batches: {maxParallel}");
             Console.WriteLine();
 
             // ═══════════════════════════════════════════════════════════════════
@@ -180,7 +164,7 @@ public static class LoadGeoDataCommand
             Console.WriteLine($"  Found {states.Count} unique states/territories");
 
             // Check existing states and create missing ones
-            var stateMap = await LoadOrCreateStatesAsync(client, states, batchSize);
+            var stateMap = await LoadOrCreateStatesAsync(client, states);
 
             stateStopwatch.Stop();
             Console.WriteLine($"  State loading completed in {stateStopwatch.Elapsed.TotalSeconds:F2}s");
@@ -212,19 +196,13 @@ public static class LoadGeoDataCommand
 
             Console.WriteLine($"  Processing {entities.Count:N0} ZIP codes...");
 
-            var options = new BulkOperationOptions
-            {
-                BatchSize = batchSize,
-                MaxParallelBatches = maxParallel
-            };
-
             var progress = new Progress<ProgressSnapshot>(s =>
             {
                 Console.WriteLine($"    Progress: {s.Processed:N0}/{s.Total:N0} ({s.PercentComplete:F1}%) " +
                     $"| {s.RatePerSecond:F0}/s | {s.Elapsed:mm\\:ss} elapsed | ETA: {s.EstimatedRemaining:mm\\:ss}");
             });
 
-            var result = await bulkExecutor.UpsertMultipleAsync("ppds_zipcode", entities, options, progress);
+            var result = await bulkExecutor.UpsertMultipleAsync("ppds_zipcode", entities, progress: progress);
 
             Console.WriteLine();
             Console.WriteLine($"  ZIP code loading completed in {result.Duration.TotalSeconds:F2}s");
@@ -336,8 +314,7 @@ public static class LoadGeoDataCommand
 
     private static async Task<Dictionary<string, Guid>> LoadOrCreateStatesAsync(
         ServiceClient client,
-        List<StateRecord> states,
-        int batchSize)
+        List<StateRecord> states)
     {
         var stateMap = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
 
