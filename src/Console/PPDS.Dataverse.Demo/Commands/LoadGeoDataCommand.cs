@@ -170,8 +170,7 @@ public static class LoadGeoDataCommand
                 .Select(g => new StateRecord
                 {
                     Abbreviation = g.Key,
-                    Name = g.First().StateName,
-                    Population = g.Sum(z => z.Population ?? 0)
+                    Name = g.First().StateName
                 })
                 .OrderBy(s => s.Abbreviation)
                 .ToList();
@@ -187,20 +186,50 @@ public static class LoadGeoDataCommand
 
             if (statesOnly)
             {
-                Console.WriteLine("  --states-only specified, skipping ZIP codes");
-                PrintSummary(totalStopwatch, states.Count, 0, 0, 0);
+                Console.WriteLine("  --states-only specified, skipping cities and ZIP codes");
+                PrintSummary(totalStopwatch, states.Count, 0, 0, 0, 0);
                 return 0;
             }
 
             // ===================================================================
-            // PHASE 4: Load ZIP Codes (using PPDS.Dataverse SDK)
+            // PHASE 4: Load Cities
             // ===================================================================
             Console.WriteLine("+-----------------------------------------------------------------+");
-            Console.WriteLine("| Phase 4: Load ZIP Codes                                         |");
+            Console.WriteLine("| Phase 4: Load Cities                                            |");
+            Console.WriteLine("+-----------------------------------------------------------------+");
+
+            var cityStopwatch = Stopwatch.StartNew();
+
+            // Extract unique cities from ZIP data (city+state combinations)
+            var cities = zipCodes
+                .GroupBy(z => $"{z.City}|{z.StateId}")
+                .Select(g => new CityRecord
+                {
+                    Name = g.First().City,
+                    StateAbbreviation = g.First().StateId
+                })
+                .OrderBy(c => c.StateAbbreviation)
+                .ThenBy(c => c.Name)
+                .ToList();
+
+            Console.WriteLine($"  Found {cities.Count:N0} unique cities");
+
+            // Create cities and build city map for ZIP code creation
+            var cityMap = await LoadOrCreateCitiesAsync(pooledClient, cities, stateMap, bulkExecutor);
+
+            cityStopwatch.Stop();
+            Console.WriteLine($"  City loading completed in {cityStopwatch.Elapsed.TotalSeconds:F2}s");
+            Console.WriteLine();
+
+            // ===================================================================
+            // PHASE 5: Load ZIP Codes (using PPDS.Dataverse SDK)
+            // ===================================================================
+            Console.WriteLine("+-----------------------------------------------------------------+");
+            Console.WriteLine("| Phase 5: Load ZIP Codes                                         |");
             Console.WriteLine("+-----------------------------------------------------------------+");
 
             // Build entities for upsert
-            var (entities, skipped) = BuildZipCodeEntities(zipCodes, stateMap, verbose);
+            var (entities, skipped) = BuildZipCodeEntities(zipCodes, stateMap, cityMap, verbose);
 
             if (skipped > 0)
             {
@@ -254,7 +283,7 @@ public static class LoadGeoDataCommand
             // Pass actual created/updated counts to summary
             var createdCount = result.CreatedCount ?? result.SuccessCount;
             var updatedCount = result.UpdatedCount ?? 0;
-            PrintSummary(totalStopwatch, states.Count, createdCount, updatedCount, result.FailureCount, skipped);
+            PrintSummary(totalStopwatch, states.Count, cities.Count, createdCount, updatedCount, result.FailureCount, skipped);
 
             return result.FailureCount > 0 ? 1 : 0;
         }
@@ -265,7 +294,7 @@ public static class LoadGeoDataCommand
         }
     }
 
-    private static void PrintSummary(Stopwatch totalStopwatch, int states, int created, int updated, int errors, int skipped = 0)
+    private static void PrintSummary(Stopwatch totalStopwatch, int states, int cities, int created, int updated, int errors, int skipped = 0)
     {
         totalStopwatch.Stop();
 
@@ -285,6 +314,7 @@ public static class LoadGeoDataCommand
         Console.WriteLine();
         Console.WriteLine($"  Total time: {totalStopwatch.Elapsed.TotalSeconds:F2}s");
         Console.WriteLine($"  States: {states}");
+        Console.WriteLine($"  Cities: {cities:N0}");
         Console.WriteLine($"  ZIP codes created: {created:N0}");
         Console.WriteLine($"  ZIP codes updated: {updated:N0}");
         if (skipped > 0)
@@ -378,8 +408,7 @@ public static class LoadGeoDataCommand
         var stateEntities = missing.Select(s => new Entity("ppds_state")
         {
             ["ppds_name"] = s.Name,
-            ["ppds_abbreviation"] = s.Abbreviation,
-            ["ppds_population"] = s.Population
+            ["ppds_abbreviation"] = s.Abbreviation
         }).ToList();
 
         var targets = new EntityCollection(stateEntities) { EntityName = "ppds_state" };
@@ -397,12 +426,142 @@ public static class LoadGeoDataCommand
     }
 
     /// <summary>
+    /// Loads or creates city records and returns a map of city+state key to GUID.
+    /// Uses UpsertMultiple with composite alternate key (name, stateid).
+    /// </summary>
+    private static async Task<Dictionary<string, Guid>> LoadOrCreateCitiesAsync(
+        IPooledClient client,
+        List<CityRecord> cities,
+        Dictionary<string, Guid> stateMap,
+        IBulkOperationExecutor bulkExecutor)
+    {
+        var cityMap = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+
+        // Query existing cities
+        Console.Write("  Checking existing cities... ");
+        var query = new QueryExpression("ppds_city")
+        {
+            ColumnSet = new ColumnSet("ppds_name", "ppds_stateid"),
+            PageInfo = new PagingInfo { Count = 5000, PageNumber = 1 }
+        };
+
+        // Build reverse state map (GUID -> abbreviation)
+        var reverseStateMap = stateMap.ToDictionary(kv => kv.Value, kv => kv.Key);
+
+        while (true)
+        {
+            var result = await client.RetrieveMultipleAsync(query);
+            foreach (var entity in result.Entities)
+            {
+                var name = entity.GetAttributeValue<string>("ppds_name");
+                var stateRef = entity.GetAttributeValue<EntityReference>("ppds_stateid");
+                if (!string.IsNullOrEmpty(name) && stateRef != null && reverseStateMap.TryGetValue(stateRef.Id, out var stateAbbr))
+                {
+                    var key = $"{name}|{stateAbbr}";
+                    cityMap[key] = entity.Id;
+                }
+            }
+
+            if (!result.MoreRecords)
+                break;
+
+            query.PageInfo.PageNumber++;
+            query.PageInfo.PagingCookie = result.PagingCookie;
+        }
+        Console.WriteLine($"found {cityMap.Count:N0}");
+
+        // Find cities that need to be created
+        var missing = cities.Where(c => !cityMap.ContainsKey(c.Key) && stateMap.ContainsKey(c.StateAbbreviation)).ToList();
+        if (missing.Count == 0)
+        {
+            Console.WriteLine("  All cities already exist");
+            return cityMap;
+        }
+
+        Console.WriteLine($"  Creating {missing.Count:N0} cities...");
+
+        // Build entities for upsert with composite alternate key
+        var cityEntities = missing.Select(c =>
+        {
+            var entity = new Entity("ppds_city");
+            // Use composite alternate key for upsert
+            entity.KeyAttributes["ppds_name"] = c.Name;
+            entity.KeyAttributes["ppds_stateid"] = stateMap[c.StateAbbreviation];
+            // Only set the state lookup in Attributes (name is in KeyAttributes already)
+            entity["ppds_stateid"] = new EntityReference("ppds_state", stateMap[c.StateAbbreviation]);
+            return entity;
+        }).ToList();
+
+        var progress = new Progress<ProgressSnapshot>(s =>
+        {
+            Console.WriteLine($"    Progress: {s.Processed:N0}/{s.Total:N0} ({s.PercentComplete:F1}%) " +
+                $"| {s.RatePerSecond:F0}/s | {s.Elapsed:mm\\:ss} elapsed | ETA: {s.EstimatedRemaining:mm\\:ss}");
+        });
+
+        var upsertResult = await bulkExecutor.UpsertMultipleAsync("ppds_city", cityEntities, progress: progress);
+
+        if (upsertResult.CreatedCount.HasValue && upsertResult.UpdatedCount.HasValue)
+        {
+            Console.WriteLine($"    Upserted: {upsertResult.SuccessCount:N0} ({upsertResult.CreatedCount:N0} created, {upsertResult.UpdatedCount:N0} updated)");
+        }
+        else
+        {
+            Console.WriteLine($"    Succeeded: {upsertResult.SuccessCount:N0}");
+        }
+
+        if (upsertResult.FailureCount > 0)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            foreach (var error in upsertResult.Errors.Take(5))
+            {
+                Console.WriteLine($"      Error at index {error.Index}: {error.Message}");
+            }
+            if (upsertResult.Errors.Count > 5)
+            {
+                Console.WriteLine($"      ... and {upsertResult.Errors.Count - 5} more errors");
+            }
+            Console.ResetColor();
+        }
+
+        // Re-query to get all city IDs (including newly created ones)
+        Console.Write("  Rebuilding city map... ");
+        cityMap.Clear();
+        query.PageInfo.PageNumber = 1;
+        query.PageInfo.PagingCookie = null;
+
+        while (true)
+        {
+            var result = await client.RetrieveMultipleAsync(query);
+            foreach (var entity in result.Entities)
+            {
+                var name = entity.GetAttributeValue<string>("ppds_name");
+                var stateRef = entity.GetAttributeValue<EntityReference>("ppds_stateid");
+                if (!string.IsNullOrEmpty(name) && stateRef != null && reverseStateMap.TryGetValue(stateRef.Id, out var stateAbbr))
+                {
+                    var key = $"{name}|{stateAbbr}";
+                    cityMap[key] = entity.Id;
+                }
+            }
+
+            if (!result.MoreRecords)
+                break;
+
+            query.PageInfo.PageNumber++;
+            query.PageInfo.PagingCookie = result.PagingCookie;
+        }
+        Console.WriteLine($"{cityMap.Count:N0} cities mapped");
+
+        return cityMap;
+    }
+
+    /// <summary>
     /// Builds Entity objects for ZIP code upsert from CSV records.
-    /// Normalizes, deduplicates, and maps state references.
+    /// Normalizes, deduplicates, and maps state and city references.
     /// </summary>
     private static (List<Entity> Entities, int Skipped) BuildZipCodeEntities(
         List<ZipCodeRecord> zipCodes,
         Dictionary<string, Guid> stateMap,
+        Dictionary<string, Guid> cityMap,
         bool verbose)
     {
         // Normalize and deduplicate by ZIP code (CSV may contain duplicates or whitespace)
@@ -454,11 +613,19 @@ public static class LoadGeoDataCommand
                 continue;
             }
 
+            // Build city key and lookup city ID
+            var cityKey = $"{zip.City}|{zip.StateId}";
+            if (!cityMap.TryGetValue(cityKey, out var cityId))
+            {
+                skippedCount++;
+                continue;
+            }
+
             var entity = new Entity("ppds_zipcode");
             // Set alternate key for upsert (do NOT also set in Attributes - see SDK docs)
             entity.KeyAttributes["ppds_code"] = zip.Zip;
             entity["ppds_stateid"] = new EntityReference("ppds_state", stateId);
-            entity["ppds_cityname"] = zip.City;
+            entity["ppds_cityid"] = new EntityReference("ppds_city", cityId);
             entity["ppds_county"] = zip.County;
             entity["ppds_latitude"] = zip.Lat;
             entity["ppds_longitude"] = zip.Lng;
@@ -522,6 +689,16 @@ public static class LoadGeoDataCommand
     {
         public string Abbreviation { get; set; } = "";
         public string Name { get; set; } = "";
-        public int Population { get; set; }
+    }
+
+    private class CityRecord
+    {
+        public string Name { get; set; } = "";
+        public string StateAbbreviation { get; set; } = "";
+
+        /// <summary>
+        /// Composite key for city uniqueness (city names can repeat across states).
+        /// </summary>
+        public string Key => $"{Name}|{StateAbbreviation}";
     }
 }

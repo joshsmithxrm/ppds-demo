@@ -190,12 +190,6 @@ public static class CreateGeoSchemaCommand
         await CreateStringAttributeAsync(client, logicalName, "ppds_abbreviation", "Abbreviation",
             "Two-letter state abbreviation (e.g., CA)", 2, AttributeRequiredLevel.ApplicationRequired);
 
-        await CreateStringAttributeAsync(client, logicalName, "ppds_fipscode", "FIPS Code",
-            "Federal Information Processing Standard code", 2, AttributeRequiredLevel.None);
-
-        await CreateIntegerAttributeAsync(client, logicalName, "ppds_population", "Population",
-            "State population", AttributeRequiredLevel.None);
-
         // Create alternate key on abbreviation for upsert support
         await CreateAlternateKeyAsync(client, logicalName, "ppds_ak_abbreviation", "Abbreviation",
             ["ppds_abbreviation"]);
@@ -248,20 +242,10 @@ public static class CreateGeoSchemaCommand
         await CreateLookupAttributeAsync(client, logicalName, "ppds_stateid", "State",
             "ppds_state", AttributeRequiredLevel.ApplicationRequired);
 
-        // Add County
-        await CreateStringAttributeAsync(client, logicalName, "ppds_county", "County",
-            "County name", 100, AttributeRequiredLevel.None);
-
-        // Add coordinates
-        await CreateDecimalAttributeAsync(client, logicalName, "ppds_latitude", "Latitude",
-            "Latitude coordinate", AttributeRequiredLevel.None);
-
-        await CreateDecimalAttributeAsync(client, logicalName, "ppds_longitude", "Longitude",
-            "Longitude coordinate", AttributeRequiredLevel.None);
-
-        // Population
-        await CreateIntegerAttributeAsync(client, logicalName, "ppds_population", "Population",
-            "City population", AttributeRequiredLevel.None);
+        // Create composite alternate key on (name, stateid) for upsert support
+        // This allows cities with the same name in different states
+        await CreateAlternateKeyAsync(client, logicalName, "ppds_ak_name_state", "City-State",
+            ["ppds_name", "ppds_stateid"]);
 
         CommandBase.WriteSuccess("Created");
     }
@@ -307,13 +291,13 @@ public static class CreateGeoSchemaCommand
 
         await client.ExecuteAsync(request);
 
-        // State lookup (for denormalized queries)
+        // State lookup
         await CreateLookupAttributeAsync(client, logicalName, "ppds_stateid", "State",
             "ppds_state", AttributeRequiredLevel.ApplicationRequired);
 
-        // City name (denormalized for simpler queries - could also be a lookup)
-        await CreateStringAttributeAsync(client, logicalName, "ppds_cityname", "City Name",
-            "Primary city name for this ZIP code", 200, AttributeRequiredLevel.None);
+        // City lookup
+        await CreateLookupAttributeAsync(client, logicalName, "ppds_cityid", "City",
+            "ppds_city", AttributeRequiredLevel.ApplicationRequired);
 
         // County
         await CreateStringAttributeAsync(client, logicalName, "ppds_county", "County",
@@ -325,14 +309,6 @@ public static class CreateGeoSchemaCommand
 
         await CreateDecimalAttributeAsync(client, logicalName, "ppds_longitude", "Longitude",
             "Longitude coordinate", AttributeRequiredLevel.None);
-
-        // Population
-        await CreateIntegerAttributeAsync(client, logicalName, "ppds_population", "Population",
-            "ZIP code population", AttributeRequiredLevel.None);
-
-        // Timezone
-        await CreateStringAttributeAsync(client, logicalName, "ppds_timezone", "Timezone",
-            "Timezone identifier", 50, AttributeRequiredLevel.None);
 
         // Create alternate key on ZIP code for upsert support
         await CreateAlternateKeyAsync(client, logicalName, "ppds_ak_code", "ZIP Code",

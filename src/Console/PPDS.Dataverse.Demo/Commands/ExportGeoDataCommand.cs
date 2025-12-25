@@ -27,6 +27,16 @@ public static class ExportGeoDataCommand
     private static readonly string DefaultOutputPath = Path.Combine(AppContext.BaseDirectory, "geo-export.zip");
     private static readonly string[] GeoEntities = ["ppds_state", "ppds_city", "ppds_zipcode"];
 
+    /// <summary>
+    /// Attribute filter for schema generation - only export fields we actually populate.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> GeoEntityAttributes = new()
+    {
+        ["ppds_state"] = ["ppds_stateid", "ppds_name", "ppds_abbreviation"],
+        ["ppds_city"] = ["ppds_cityid", "ppds_name", "ppds_stateid"],
+        ["ppds_zipcode"] = ["ppds_zipcodeid", "ppds_code", "ppds_stateid", "ppds_cityid", "ppds_county", "ppds_latitude", "ppds_longitude"]
+    };
+
     public static Command Create()
     {
         var command = new Command("export-geo-data", "Export geographic data to a portable ZIP package");
@@ -142,7 +152,9 @@ public static class ExportGeoDataCommand
             var schemaResult = await cli.SchemaGenerateAsync(
                 GeoEntities,
                 DefaultSchemaPath,
-                options);
+                options,
+                includeRelationships: true,
+                includeAttributes: GeoEntityAttributes);
 
             if (schemaResult.Failed)
             {

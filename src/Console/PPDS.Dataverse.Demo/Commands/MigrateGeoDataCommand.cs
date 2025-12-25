@@ -287,19 +287,18 @@ public static class MigrateGeoDataCommand
 
             Console.Write("  Querying states... ");
             var states = await QueryAllEntitiesAsync(sourcePool, "ppds_state",
-                "ppds_stateid", "ppds_name", "ppds_abbreviation", "ppds_fipscode", "ppds_population");
+                "ppds_stateid", "ppds_name", "ppds_abbreviation");
             Console.WriteLine($"{states.Count:N0} found");
 
             Console.Write("  Querying cities... ");
             var cities = await QueryAllEntitiesAsync(sourcePool, "ppds_city",
-                "ppds_cityid", "ppds_name", "ppds_stateid", "ppds_county",
-                "ppds_latitude", "ppds_longitude", "ppds_population");
+                "ppds_cityid", "ppds_name", "ppds_stateid");
             Console.WriteLine($"{cities.Count:N0} found");
 
             Console.Write("  Querying ZIP codes... ");
             var zipCodes = await QueryAllEntitiesAsync(sourcePool, "ppds_zipcode",
-                "ppds_zipcodeid", "ppds_code", "ppds_stateid", "ppds_cityname",
-                "ppds_county", "ppds_latitude", "ppds_longitude", "ppds_population", "ppds_timezone");
+                "ppds_zipcodeid", "ppds_code", "ppds_stateid", "ppds_cityid",
+                "ppds_county", "ppds_latitude", "ppds_longitude");
             Console.WriteLine($"{zipCodes.Count:N0} found");
             Console.WriteLine();
 
@@ -366,10 +365,6 @@ public static class MigrateGeoDataCommand
                 // Use alternate key for upsert
                 entity.KeyAttributes["ppds_abbreviation"] = s.GetAttributeValue<string>("ppds_abbreviation");
                 entity["ppds_name"] = s.GetAttributeValue<string>("ppds_name");
-                if (s.Contains("ppds_fipscode"))
-                    entity["ppds_fipscode"] = s.GetAttributeValue<string>("ppds_fipscode");
-                if (s.Contains("ppds_population"))
-                    entity["ppds_population"] = s.GetAttributeValue<int?>("ppds_population");
                 return entity;
             }).ToList();
 
@@ -386,6 +381,21 @@ public static class MigrateGeoDataCommand
                 s => s.GetAttributeValue<string>("ppds_abbreviation") ?? "",
                 s => s.Id);
             Console.WriteLine($"{targetStates.Count} found");
+
+            // Build source city map (city ID -> city name + state abbreviation) for ZIP code lookup resolution
+            var sourceCityMap = new Dictionary<Guid, (string Name, string StateAbbr)>();
+            foreach (var city in cities)
+            {
+                var stateRef = city.GetAttributeValue<EntityReference>("ppds_stateid");
+                if (stateRef == null) continue;
+
+                var sourceState = states.FirstOrDefault(s => s.Id == stateRef.Id);
+                if (sourceState == null) continue;
+
+                var abbr = sourceState.GetAttributeValue<string>("ppds_abbreviation") ?? "";
+                var name = city.GetAttributeValue<string>("ppds_name") ?? "";
+                sourceCityMap[city.Id] = (name, abbr);
+            }
 
             // Import cities (with state lookup resolution)
             if (cities.Count > 0)
@@ -405,16 +415,10 @@ public static class MigrateGeoDataCommand
                     if (!targetStateMap.TryGetValue(abbr ?? "", out var targetStateId)) continue;
 
                     var entity = new Entity("ppds_city");
-                    entity["ppds_name"] = city.GetAttributeValue<string>("ppds_name");
+                    // Use composite alternate key for upsert
+                    entity.KeyAttributes["ppds_name"] = city.GetAttributeValue<string>("ppds_name");
+                    entity.KeyAttributes["ppds_stateid"] = targetStateId;
                     entity["ppds_stateid"] = new EntityReference("ppds_state", targetStateId);
-                    if (city.Contains("ppds_county"))
-                        entity["ppds_county"] = city.GetAttributeValue<string>("ppds_county");
-                    if (city.Contains("ppds_latitude"))
-                        entity["ppds_latitude"] = city.GetAttributeValue<decimal?>("ppds_latitude");
-                    if (city.Contains("ppds_longitude"))
-                        entity["ppds_longitude"] = city.GetAttributeValue<decimal?>("ppds_longitude");
-                    if (city.Contains("ppds_population"))
-                        entity["ppds_population"] = city.GetAttributeValue<int?>("ppds_population");
 
                     cityEntities.Add(entity);
                 }
@@ -424,7 +428,30 @@ public static class MigrateGeoDataCommand
                 PrintBulkResult("  Cities", cityResult);
             }
 
-            // Import ZIP codes (with state lookup resolution)
+            // Query target cities to get GUIDs for lookup resolution
+            Console.Write("  Querying target cities for lookup resolution... ");
+            var targetCities = await QueryAllEntitiesAsync(targetPool, "ppds_city",
+                "ppds_cityid", "ppds_name", "ppds_stateid");
+
+            // Build target city map (name+stateAbbr -> GUID)
+            var targetCityMap = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+            foreach (var city in targetCities)
+            {
+                var name = city.GetAttributeValue<string>("ppds_name") ?? "";
+                var stateRef = city.GetAttributeValue<EntityReference>("ppds_stateid");
+                if (stateRef == null) continue;
+
+                // Find state abbreviation from target states
+                var state = targetStates.FirstOrDefault(s => s.Id == stateRef.Id);
+                if (state == null) continue;
+
+                var abbr = state.GetAttributeValue<string>("ppds_abbreviation") ?? "";
+                var key = $"{name}|{abbr}";
+                targetCityMap[key] = city.Id;
+            }
+            Console.WriteLine($"{targetCities.Count} found");
+
+            // Import ZIP codes (with state and city lookup resolution)
             Console.WriteLine("  Importing ZIP codes...");
             var zipEntities = new List<Entity>();
             foreach (var zip in zipCodes)
@@ -439,22 +466,31 @@ public static class MigrateGeoDataCommand
                 var abbr = sourceState.GetAttributeValue<string>("ppds_abbreviation");
                 if (!targetStateMap.TryGetValue(abbr ?? "", out var targetStateId)) continue;
 
+                // Resolve city lookup
+                var cityRef = zip.GetAttributeValue<EntityReference>("ppds_cityid");
+                Guid? targetCityId = null;
+                if (cityRef != null && sourceCityMap.TryGetValue(cityRef.Id, out var cityInfo))
+                {
+                    var cityKey = $"{cityInfo.Name}|{cityInfo.StateAbbr}";
+                    if (targetCityMap.TryGetValue(cityKey, out var resolvedCityId))
+                    {
+                        targetCityId = resolvedCityId;
+                    }
+                }
+
+                if (targetCityId == null) continue; // City is required
+
                 var entity = new Entity("ppds_zipcode");
                 // Use alternate key for upsert
                 entity.KeyAttributes["ppds_code"] = zip.GetAttributeValue<string>("ppds_code");
                 entity["ppds_stateid"] = new EntityReference("ppds_state", targetStateId);
-                if (zip.Contains("ppds_cityname"))
-                    entity["ppds_cityname"] = zip.GetAttributeValue<string>("ppds_cityname");
+                entity["ppds_cityid"] = new EntityReference("ppds_city", targetCityId.Value);
                 if (zip.Contains("ppds_county"))
                     entity["ppds_county"] = zip.GetAttributeValue<string>("ppds_county");
                 if (zip.Contains("ppds_latitude"))
                     entity["ppds_latitude"] = zip.GetAttributeValue<decimal?>("ppds_latitude");
                 if (zip.Contains("ppds_longitude"))
                     entity["ppds_longitude"] = zip.GetAttributeValue<decimal?>("ppds_longitude");
-                if (zip.Contains("ppds_population"))
-                    entity["ppds_population"] = zip.GetAttributeValue<int?>("ppds_population");
-                if (zip.Contains("ppds_timezone"))
-                    entity["ppds_timezone"] = zip.GetAttributeValue<string>("ppds_timezone");
 
                 zipEntities.Add(entity);
             }

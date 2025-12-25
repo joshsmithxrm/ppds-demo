@@ -106,13 +106,15 @@ public class MigrationCli : IMigrationCli
         string outputPath,
         GlobalOptions options,
         bool includeRelationships = true,
+        Dictionary<string, string[]>? includeAttributes = null,
         CancellationToken cancellationToken = default)
     {
         var args = new CliArgs(options)
             .Command("schema generate")
             .WithEntities(entities.ToArray())
             .WithOutput(outputPath)
-            .WithRelationships(includeRelationships);
+            .WithRelationships(includeRelationships)
+            .WithIncludeAttributes(includeAttributes);
 
         return RunAsync(args, cancellationToken);
     }

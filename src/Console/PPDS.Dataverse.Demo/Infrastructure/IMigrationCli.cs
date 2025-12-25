@@ -17,11 +17,18 @@ public interface IMigrationCli
     /// Generates a migration schema from Dataverse metadata.
     /// Equivalent to: ppds-migrate schema generate -e {entities} -o {outputPath} [options]
     /// </summary>
+    /// <param name="entities">Entity logical names to include in schema.</param>
+    /// <param name="outputPath">Output path for generated schema XML.</param>
+    /// <param name="options">Global CLI options (environment, verbose, debug).</param>
+    /// <param name="includeRelationships">Include relationship metadata.</param>
+    /// <param name="includeAttributes">Map of entity to attributes to include (null = all attributes).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     Task<CliResult> SchemaGenerateAsync(
         IEnumerable<string> entities,
         string outputPath,
         GlobalOptions options,
         bool includeRelationships = true,
+        Dictionary<string, string[]>? includeAttributes = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

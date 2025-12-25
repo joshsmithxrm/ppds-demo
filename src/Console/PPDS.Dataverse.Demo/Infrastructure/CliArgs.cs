@@ -208,4 +208,20 @@ public static class CliArgsExtensions
     /// </summary>
     public static CliArgs WithRelationships(this CliArgs args, bool include = true)
         => args.Flag("--include-relationships", include);
+
+    /// <summary>
+    /// Adds include-attributes option for filtering exported attributes per entity.
+    /// Format: --include-attributes "entity1:attr1,attr2;entity2:attr3,attr4"
+    /// </summary>
+    public static CliArgs WithIncludeAttributes(this CliArgs args, Dictionary<string, string[]>? includeAttributes)
+    {
+        if (includeAttributes == null || includeAttributes.Count == 0)
+            return args;
+
+        // Build format: "entity1:attr1,attr2;entity2:attr3,attr4"
+        var formatted = string.Join(";",
+            includeAttributes.Select(kv => $"{kv.Key}:{string.Join(",", kv.Value)}"));
+
+        return args.Option("--include-attributes", formatted);
+    }
 }
