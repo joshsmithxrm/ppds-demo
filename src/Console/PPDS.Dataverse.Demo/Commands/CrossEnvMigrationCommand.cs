@@ -2,11 +2,17 @@ using System.CommandLine;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Xml.Linq;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using PPDS.Dataverse.Demo.Infrastructure;
 using PPDS.Dataverse.Demo.Models;
 using PPDS.Dataverse.Pooling;
+using PPDS.Migration.Export;
+using PPDS.Migration.Formats;
+using PPDS.Migration.Import;
+using PPDS.Migration.Progress;
+using PPDS.Migration.Schema;
 
 namespace PPDS.Dataverse.Demo.Commands;
 
@@ -82,29 +88,22 @@ public static class CrossEnvMigrationCommand
     {
         ConsoleWriter.Header("Cross-Environment Migration: Dev -> QA");
 
-        // Create CLI client with logging if verbose
-        var cli = options.EffectiveVerbose
-            ? MigrationCli.CreateWithConsoleLogging()
-            : new MigrationCli();
-
-        // Verify CLI exists
-        if (!cli.Exists)
-        {
-            ConsoleWriter.Error($"CLI not found: {cli.CliPath}");
-            Console.WriteLine("Build the CLI first: dotnet build ../sdk/src/PPDS.Migration.Cli");
-            return 1;
-        }
-
         // Create GlobalOptions for each environment
         var devOptions = options with { Environment = "Dev" };
         var qaOptions = options with { Environment = "QA" };
 
-        // Create pools for both environments
-        using var devHost = CommandBase.CreateHost(devOptions);
-        using var qaHost = CommandBase.CreateHost(qaOptions);
+        // Create migration hosts for both environments (uses library directly, no CLI)
+        using var devHost = HostFactory.CreateHostForMigration(devOptions);
+        using var qaHost = HostFactory.CreateHostForMigration(qaOptions);
 
-        var devPool = CommandBase.GetConnectionPool(devHost);
-        var qaPool = CommandBase.GetConnectionPool(qaHost);
+        var devPool = HostFactory.GetConnectionPool(devHost, "Dev");
+        var qaPool = HostFactory.GetConnectionPool(qaHost, "QA");
+
+        // Get migration services
+        var schemaGenerator = devHost.Services.GetRequiredService<ISchemaGenerator>();
+        var schemaWriter = devHost.Services.GetRequiredService<ICmtSchemaWriter>();
+        var exporter = devHost.Services.GetRequiredService<IExporter>();
+        var importer = qaHost.Services.GetRequiredService<IImporter>();
 
         if (devPool == null)
         {
@@ -160,32 +159,38 @@ public static class CrossEnvMigrationCommand
             Console.WriteLine();
 
             // ===================================================================
-            // PHASE 2: Generate schema and export from Dev
+            // PHASE 2: Generate schema and export from Dev (using library)
             // ===================================================================
-            ConsoleWriter.Section("Phase 2: Export from Dev");
+            ConsoleWriter.Section("Phase 2: Export from Dev (PPDS.Migration)");
 
             // Generate schema
             Console.Write("  Generating schema... ");
             var entities = new[] { "account", "contact" };
 
-            var schemaArgs = new CliArgs(devOptions)
-                .Command("schema generate")
-                .WithEntities(entities)
-                .WithOutput(SchemaPath)
-                .WithRelationships(includeM2M);
-
-            var schemaResult = await cli.RunAsync(schemaArgs);
-            if (schemaResult.Failed)
+            var schemaOptions = new SchemaGeneratorOptions
             {
-                ConsoleWriter.Error("Schema generation failed");
-                return 1;
-            }
+                IncludeRelationships = includeM2M,
+                IncludeAllFields = true
+            };
+
+            var schema = await schemaGenerator.GenerateAsync(
+                entities,
+                schemaOptions,
+                progress: null,
+                CancellationToken.None);
+            await schemaWriter.WriteAsync(schema, SchemaPath, CancellationToken.None);
             ConsoleWriter.Success("Done");
 
             // Export data
             Console.Write("  Exporting data... ");
-            var exportResult = await cli.ExportAsync(SchemaPath, DataPath, devOptions);
-            if (exportResult.Failed)
+            var exportOptions = new ExportOptions();
+            var exportResult = await exporter.ExportAsync(
+                schema,
+                DataPath,
+                exportOptions,
+                progress: null,
+                CancellationToken.None);
+            if (!exportResult.Success)
             {
                 ConsoleWriter.Error("Export failed");
                 return 1;
@@ -223,30 +228,36 @@ public static class CrossEnvMigrationCommand
             Console.WriteLine();
 
             // ===================================================================
-            // PHASE 4: Import to QA
+            // PHASE 4: Import to QA (using library)
             // ===================================================================
-            ConsoleWriter.Section("Phase 4: Import to QA");
+            ConsoleWriter.Section("Phase 4: Import to QA (PPDS.Migration)");
 
             if (File.Exists(UserMappingPath))
             {
-                Console.WriteLine($"  Using user mapping: {UserMappingPath}");
+                Console.WriteLine($"  User mapping available: {UserMappingPath}");
+                Console.WriteLine("  (Note: StripOwnerFields=true used instead for cross-env)");
             }
 
             Console.Write("  Importing data to QA... ");
 
-            var importOptions = new ImportCliOptions
+            var importOpts = new ImportOptions
             {
-                Mode = "Upsert",
-                UserMappingPath = File.Exists(UserMappingPath) ? UserMappingPath : null
+                Mode = ImportMode.Upsert,
+                StripOwnerFields = true,  // Key for cross-environment migrations
+                ContinueOnError = true
             };
 
-            var importResult = await cli.ImportAsync(DataPath, qaOptions, importOptions);
-            if (importResult.Failed)
+            var importResult = await importer.ImportAsync(
+                DataPath,
+                importOpts,
+                progress: null,
+                CancellationToken.None);
+            if (!importResult.Success)
             {
                 ConsoleWriter.Error("Import failed");
                 return 1;
             }
-            ConsoleWriter.Success("Done");
+            ConsoleWriter.Success($"Done ({importResult.RecordsImported} records)");
             Console.WriteLine();
 
             // ===================================================================

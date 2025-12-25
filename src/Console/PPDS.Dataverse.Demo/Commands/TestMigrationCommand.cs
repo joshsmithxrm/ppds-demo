@@ -8,6 +8,11 @@ using PPDS.Dataverse.BulkOperations;
 using PPDS.Dataverse.Demo.Infrastructure;
 using PPDS.Dataverse.Demo.Models;
 using PPDS.Dataverse.Pooling;
+using PPDS.Migration.Export;
+using PPDS.Migration.Formats;
+using PPDS.Migration.Import;
+using PPDS.Migration.Progress;
+using PPDS.Migration.Schema;
 
 namespace PPDS.Dataverse.Demo.Commands;
 
@@ -69,27 +74,21 @@ public static class TestMigrationCommand
         bool skipClean,
         GlobalOptions options)
     {
-        ConsoleWriter.Header("ppds-migrate End-to-End Test");
+        ConsoleWriter.Header("PPDS.Migration End-to-End Test");
 
-        // Create CLI client with logging if verbose
-        var cli = options.EffectiveVerbose
-            ? MigrationCli.CreateWithConsoleLogging()
-            : new MigrationCli();
-
-        // Verify CLI exists
-        if (!cli.Exists)
-        {
-            ConsoleWriter.Error($"CLI not found: {cli.CliPath}");
-            Console.WriteLine("Build the CLI first: dotnet build ../sdk/src/PPDS.Migration.Cli");
-            return 1;
-        }
-
-        using var host = CommandBase.CreateHost(options);
-        var pool = CommandBase.GetConnectionPool(host);
+        // Create host with migration services (uses library directly, no CLI)
+        using var host = HostFactory.CreateHostForMigration(options);
+        var pool = HostFactory.GetConnectionPool(host, options.Environment);
         if (pool == null) return 1;
 
+        // Get migration services from DI
         var bulkExecutor = host.Services.GetRequiredService<IBulkOperationExecutor>();
-        var envName = CommandBase.ResolveEnvironment(host, options);
+        var schemaGenerator = host.Services.GetRequiredService<ISchemaGenerator>();
+        var schemaWriter = host.Services.GetRequiredService<ICmtSchemaWriter>();
+        var exporter = host.Services.GetRequiredService<IExporter>();
+        var importer = host.Services.GetRequiredService<IImporter>();
+
+        var envName = HostFactory.ResolveEnvironment(host, options);
 
         // Update options with resolved environment
         options = options with { Environment = envName };
@@ -152,27 +151,35 @@ public static class TestMigrationCommand
             Console.WriteLine();
 
             // ===================================================================
-            // PHASE 2: Generate schema and export
+            // PHASE 2: Generate schema and export (using library directly)
             // ===================================================================
-            ConsoleWriter.Section("Phase 2: Generate Schema & Export");
+            ConsoleWriter.Section("Phase 2: Generate Schema & Export (PPDS.Migration)");
 
             // Generate schema
             Console.Write("  Generating schema... ");
-            var schemaResult = await cli.SchemaGenerateAsync(
-                new[] { "account", "contact" },
-                SchemaPath,
-                options);
-            if (schemaResult.Failed)
+            var schemaOptions = new SchemaGeneratorOptions
             {
-                ConsoleWriter.Error("Schema generation failed");
-                return 1;
-            }
+                IncludeRelationships = true,
+                IncludeAllFields = true
+            };
+            var schema = await schemaGenerator.GenerateAsync(
+                new[] { "account", "contact" },
+                schemaOptions,
+                progress: null,
+                CancellationToken.None);
+            await schemaWriter.WriteAsync(schema, SchemaPath, CancellationToken.None);
             ConsoleWriter.Success("Done");
 
             // Export data
             Console.Write("  Exporting data... ");
-            var exportResult = await cli.ExportAsync(SchemaPath, DataPath, options);
-            if (exportResult.Failed)
+            var exportOptions = new ExportOptions();
+            var exportResult = await exporter.ExportAsync(
+                schema,
+                DataPath,
+                exportOptions,
+                progress: null,
+                CancellationToken.None);
+            if (!exportResult.Success)
             {
                 ConsoleWriter.Error("Export failed");
                 return 1;
@@ -212,21 +219,28 @@ public static class TestMigrationCommand
             }
 
             // ===================================================================
-            // PHASE 4: Import data
+            // PHASE 4: Import data (using library directly)
             // ===================================================================
-            ConsoleWriter.Section("Phase 4: Import Data");
+            ConsoleWriter.Section("Phase 4: Import Data (PPDS.Migration)");
 
             Console.Write("  Importing data... ");
-            var importResult = await cli.ImportAsync(
+            var importOptions = new ImportOptions
+            {
+                Mode = ImportMode.Upsert,
+                StripOwnerFields = true,
+                ContinueOnError = true
+            };
+            var importResult = await importer.ImportAsync(
                 DataPath,
-                options,
-                new ImportCliOptions { Mode = "Upsert" });
-            if (importResult.Failed)
+                importOptions,
+                progress: null,
+                CancellationToken.None);
+            if (!importResult.Success)
             {
                 ConsoleWriter.Error("Import failed");
                 return 1;
             }
-            ConsoleWriter.Success("Done");
+            ConsoleWriter.Success($"Done ({importResult.RecordsImported} records)");
             Console.WriteLine();
 
             // ===================================================================

@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\sdk\src\PPDS.Dataverse\PPDS.Dataverse.csproj" />
+    <ProjectReference Include="..\..\..\..\sdk\src\PPDS.Migration\PPDS.Migration.csproj" />
   </ItemGroup>
 
   <ItemGroup>

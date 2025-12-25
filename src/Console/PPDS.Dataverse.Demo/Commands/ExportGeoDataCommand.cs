@@ -1,16 +1,21 @@
 using System.CommandLine;
 using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using PPDS.Dataverse.Demo.Infrastructure;
 using PPDS.Dataverse.Pooling;
+using PPDS.Migration.Export;
+using PPDS.Migration.Progress;
+using PPDS.Migration.Schema;
 
 namespace PPDS.Dataverse.Demo.Commands;
 
 /// <summary>
 /// Exports geographic reference data to a portable ZIP package.
 ///
-/// This command demonstrates the ppds-migrate CLI export workflow:
-///   1. Generate schema: ppds-migrate schema generate -e ppds_state,ppds_city,ppds_zipcode
-///   2. Export data: ppds-migrate export --schema schema.xml --output data.zip
+/// This command uses the PPDS.Migration library directly for:
+///   - ISchemaGenerator to create schema from Dataverse metadata
+///   - IExporter to export data to ZIP package
+///   - ConsoleProgressReporter for real-time progress output
 ///
 /// The resulting package can be:
 ///   - Stored in artifact repositories (Azure Artifacts, Git LFS, S3)
@@ -77,28 +82,19 @@ public static class ExportGeoDataCommand
 
         ConsoleWriter.Header("Export Geographic Data");
 
-        // Create CLI client with logging if verbose
-        var cli = options.EffectiveVerbose
-            ? MigrationCli.CreateWithConsoleLogging()
-            : new MigrationCli();
-
-        // Verify CLI exists
-        if (!cli.Exists)
-        {
-            ConsoleWriter.Error($"CLI not found: {cli.CliPath}");
-            Console.WriteLine("Build the CLI first: dotnet build ../sdk/src/PPDS.Migration.Cli");
-            return 1;
-        }
-
-        // Create connection pool to verify source data
-        using var host = CommandBase.CreateHost(options);
-        var pool = CommandBase.GetConnectionPool(host);
+        // Create host with migration services (uses library directly, no CLI)
+        using var host = HostFactory.CreateHostForMigration(options);
+        var pool = HostFactory.GetConnectionPool(host, options.Environment);
 
         if (pool == null)
         {
             ConsoleWriter.Error($"{options.Environment} environment not configured. See docs/guides/LOCAL_DEVELOPMENT_GUIDE.md");
             return 1;
         }
+
+        // Get migration services from DI
+        var schemaGenerator = host.Services.GetRequiredService<ISchemaGenerator>();
+        var exporter = host.Services.GetRequiredService<IExporter>();
 
         // Ensure migration directory exists
         var schemaDir = Path.GetDirectoryName(DefaultSchemaPath);
@@ -143,47 +139,65 @@ public static class ExportGeoDataCommand
             }
 
             // ===================================================================
-            // STEP 2: Generate Schema
+            // STEP 2: Generate Schema (using library directly)
             // ===================================================================
-            ConsoleWriter.Section("Step 2: Generate Schema (ppds-migrate schema generate)");
+            ConsoleWriter.Section("Step 2: Generate Schema (PPDS.Migration library)");
 
             Console.Write($"  Generating schema for: {string.Join(", ", GeoEntities)}... ");
 
-            var schemaResult = await cli.SchemaGenerateAsync(
-                GeoEntities,
-                DefaultSchemaPath,
-                options,
-                includeRelationships: true,
-                includeAttributes: GeoEntityAttributes);
-
-            if (schemaResult.Failed)
+            var schemaOptions = new SchemaGeneratorOptions
             {
-                ConsoleWriter.Error("Schema generation failed");
-                return 1;
-            }
+                IncludeRelationships = true,
+                IncludeAllFields = true
+            };
+
+            // Generate schema for the geo entities
+            var schema = await schemaGenerator.GenerateAsync(
+                GeoEntities,
+                schemaOptions,
+                progress: null,
+                CancellationToken.None);
+
+            // Save schema to file using ICmtSchemaWriter
+            var schemaWriter = host.Services.GetRequiredService<PPDS.Migration.Formats.ICmtSchemaWriter>();
+            await schemaWriter.WriteAsync(schema, DefaultSchemaPath, CancellationToken.None);
+
             ConsoleWriter.Success("Done");
             Console.WriteLine($"  Schema file: {DefaultSchemaPath}");
+            Console.WriteLine($"  Entities: {schema.Entities.Count}");
             Console.WriteLine();
 
             // ===================================================================
-            // STEP 3: Export Data
+            // STEP 3: Export Data (using library directly)
             // ===================================================================
-            ConsoleWriter.Section("Step 3: Export Data (ppds-migrate export)");
+            ConsoleWriter.Section("Step 3: Export Data (PPDS.Migration library)");
 
-            Console.Write("  Exporting data package... ");
-            var exportResult = await cli.ExportAsync(
-                DefaultSchemaPath,
+            Console.WriteLine("  Exporting data package with real-time progress...");
+            Console.WriteLine();
+
+            // Create progress reporter for real-time output
+            var progress = new ConsoleProgressReporter();
+
+            var exportOptions = new ExportOptions();
+
+            // Export using the schema we just generated (second overload takes MigrationSchema directly)
+            var exportResult = await exporter.ExportAsync(
+                schema,
                 output,
-                options);
+                exportOptions,
+                progress,
+                CancellationToken.None);
 
-            if (exportResult.Failed)
+            Console.WriteLine();
+
+            if (!exportResult.Success)
             {
-                ConsoleWriter.Error("Export failed");
+                ConsoleWriter.Error($"Export failed with {exportResult.Errors.Count} errors");
                 return 1;
             }
 
             var fileInfo = new FileInfo(output);
-            ConsoleWriter.Success($"Done ({fileInfo.Length / 1024} KB)");
+            ConsoleWriter.Success($"Export complete: {exportResult.RecordsExported:N0} records ({fileInfo.Length / 1024} KB)");
             Console.WriteLine();
 
             stopwatch.Stop();

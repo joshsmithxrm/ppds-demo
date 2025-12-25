@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PPDS.Dataverse.DependencyInjection;
 using PPDS.Dataverse.Pooling;
+using PPDS.Migration.DependencyInjection;
 
 namespace PPDS.Dataverse.Demo.Infrastructure;
 
@@ -27,6 +28,23 @@ public static class HostFactory
             .ConfigureServices((context, services) =>
             {
                 services.AddDataverseConnectionPool(context.Configuration, environment: options.Environment);
+            })
+            .Build();
+    }
+
+    /// <summary>
+    /// Creates a host configured for migration operations.
+    /// Includes connection pool, schema generator, exporter, and importer services.
+    /// </summary>
+    /// <param name="options">Global options (environment, logging, etc.).</param>
+    public static IHost CreateHostForMigration(GlobalOptions options)
+    {
+        return Host.CreateDefaultBuilder()
+            .ConfigureLogging(logging => ConfigureLogging(logging, options))
+            .ConfigureServices((context, services) =>
+            {
+                services.AddDataverseConnectionPool(context.Configuration, environment: options.Environment);
+                services.AddDataverseMigration();
             })
             .Build();
     }
@@ -75,6 +93,7 @@ public static class HostFactory
             : LogLevel.Warning;
 
         logging.AddFilter("PPDS.Dataverse", level);
+        logging.AddFilter("PPDS.Migration", level);
 
         if (options.EffectiveVerbose)
         {

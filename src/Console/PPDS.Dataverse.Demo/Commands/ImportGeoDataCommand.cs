@@ -2,16 +2,21 @@ using System.CommandLine;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Xml.Linq;
+using Microsoft.Extensions.DependencyInjection;
 using PPDS.Dataverse.Demo.Infrastructure;
 using PPDS.Dataverse.Pooling;
+using PPDS.Migration.Import;
+using PPDS.Migration.Progress;
 
 namespace PPDS.Dataverse.Demo.Commands;
 
 /// <summary>
 /// Imports geographic reference data from a portable ZIP package.
 ///
-/// This command demonstrates the ppds-migrate CLI import workflow:
-///   ppds-migrate import --data geo-export.zip --mode Upsert --env QA
+/// This command uses the PPDS.Migration library directly for:
+///   - Real-time progress output via ConsoleProgressReporter
+///   - Typed ImportOptions with StripOwnerFields to avoid user reference errors
+///   - Error pattern detection with actionable suggestions
 ///
 /// The package should have been created by:
 ///   - export-geo-data command
@@ -20,6 +25,7 @@ namespace PPDS.Dataverse.Demo.Commands;
 /// Supports:
 ///   - Upsert mode (default) - idempotent via alternate keys
 ///   - Clean-first option - removes existing data before import
+///   - Strip owner fields (default: true) - avoids "systemuser Does Not Exist" errors
 ///
 /// Usage:
 ///   dotnet run -- import-geo-data --data geo-v1.0.zip --env QA
@@ -42,6 +48,11 @@ public static class ImportGeoDataCommand
             "--clean-first",
             "Run clean-geo-data before import");
 
+        var stripOwnerFieldsOption = new Option<bool>(
+            "--strip-owner-fields",
+            getDefaultValue: () => true,
+            description: "Strip owner fields to avoid user reference errors (default: true)");
+
         // Use standardized options from GlobalOptionsExtensions
         var envOption = GlobalOptionsExtensions.CreateEnvironmentOption(isRequired: true);
         var verboseOption = GlobalOptionsExtensions.CreateVerboseOption();
@@ -50,10 +61,11 @@ public static class ImportGeoDataCommand
         command.AddOption(dataOption);
         command.AddOption(envOption);
         command.AddOption(cleanFirstOption);
+        command.AddOption(stripOwnerFieldsOption);
         command.AddOption(verboseOption);
         command.AddOption(debugOption);
 
-        command.SetHandler(async (string data, string? environment, bool cleanFirst, bool verbose, bool debug) =>
+        command.SetHandler(async (string data, string? environment, bool cleanFirst, bool stripOwnerFields, bool verbose, bool debug) =>
         {
             var options = new GlobalOptions
             {
@@ -61,8 +73,8 @@ public static class ImportGeoDataCommand
                 Verbose = verbose,
                 Debug = debug
             };
-            Environment.ExitCode = await ExecuteAsync(data, options, cleanFirst);
-        }, dataOption, envOption, cleanFirstOption, verboseOption, debugOption);
+            Environment.ExitCode = await ExecuteAsync(data, options, cleanFirst, stripOwnerFields);
+        }, dataOption, envOption, cleanFirstOption, stripOwnerFieldsOption, verboseOption, debugOption);
 
         return command;
     }
@@ -70,22 +82,10 @@ public static class ImportGeoDataCommand
     public static async Task<int> ExecuteAsync(
         string dataPath,
         GlobalOptions options,
-        bool cleanFirst = false)
+        bool cleanFirst = false,
+        bool stripOwnerFields = true)
     {
         ConsoleWriter.Header("Import Geographic Data");
-
-        // Create CLI client with logging if verbose
-        var cli = options.EffectiveVerbose
-            ? MigrationCli.CreateWithConsoleLogging()
-            : new MigrationCli();
-
-        // Verify CLI exists
-        if (!cli.Exists)
-        {
-            ConsoleWriter.Error($"CLI not found: {cli.CliPath}");
-            Console.WriteLine("Build the CLI first: dotnet build ../sdk/src/PPDS.Migration.Cli");
-            return 1;
-        }
 
         // Verify data package exists
         if (!File.Exists(dataPath))
@@ -95,9 +95,9 @@ public static class ImportGeoDataCommand
             return 1;
         }
 
-        // Create connection pool to verify target
-        using var host = CommandBase.CreateHost(options);
-        var pool = CommandBase.GetConnectionPool(host);
+        // Create host with migration services (uses library directly, no CLI)
+        using var host = HostFactory.CreateHostForMigration(options);
+        var pool = HostFactory.GetConnectionPool(host, options.Environment);
 
         if (pool == null)
         {
@@ -106,6 +106,9 @@ public static class ImportGeoDataCommand
             return 1;
         }
 
+        // Get importer from DI
+        var importer = host.Services.GetRequiredService<IImporter>();
+
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -113,6 +116,7 @@ public static class ImportGeoDataCommand
             Console.WriteLine($"  Environment: {options.Environment}");
             Console.WriteLine($"  Package: {Path.GetFullPath(dataPath)}");
             Console.WriteLine($"  Size: {new FileInfo(dataPath).Length / 1024} KB");
+            Console.WriteLine($"  Strip owner fields: {stripOwnerFields}");
             Console.WriteLine();
 
             // ===================================================================
@@ -176,24 +180,42 @@ public static class ImportGeoDataCommand
             }
 
             // ===================================================================
-            // STEP 4: Import Data
+            // STEP 4: Import Data (using library directly)
             // ===================================================================
             var importStep = cleanFirst ? "4" : "3";
-            ConsoleWriter.Section($"Step {importStep}: Import Data (ppds-migrate import)");
+            ConsoleWriter.Section($"Step {importStep}: Import Data (PPDS.Migration library)");
 
-            Console.Write("  Importing data package... ");
+            Console.WriteLine("  Importing data package with real-time progress...");
+            Console.WriteLine();
 
-            var importResult = await cli.ImportAsync(
-                dataPath,
-                options,
-                new ImportCliOptions { Mode = "Upsert" });
+            // Create progress reporter for real-time output
+            var progress = new ConsoleProgressReporter();
 
-            if (importResult.Failed)
+            // Configure import options - StripOwnerFields is the key fix!
+            var importOptions = new ImportOptions
             {
-                ConsoleWriter.Error("Import failed");
+                Mode = ImportMode.Upsert,
+                StripOwnerFields = stripOwnerFields,  // Fixes "systemuser Does Not Exist" errors
+                ContinueOnError = true
+            };
+
+            // Direct library call - no more CLI wrapper!
+            var importResult = await importer.ImportAsync(
+                dataPath,
+                importOptions,
+                progress,
+                CancellationToken.None);
+
+            Console.WriteLine();
+
+            if (!importResult.Success)
+            {
+                ConsoleWriter.Error($"Import completed with {importResult.Errors.Count} errors");
+                // ConsoleProgressReporter already displayed error details and suggestions
                 return 1;
             }
-            ConsoleWriter.Success("Done");
+
+            ConsoleWriter.Success($"Import complete: {importResult.RecordsImported:N0} records in {importResult.Duration.TotalSeconds:F2}s");
             Console.WriteLine();
 
             // ===================================================================
