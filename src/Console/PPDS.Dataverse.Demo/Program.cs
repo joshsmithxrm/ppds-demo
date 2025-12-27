@@ -19,6 +19,7 @@ rootCommand.AddCommand(CrossEnvMigrationCommand.Create());
 rootCommand.AddCommand(GenerateUserMappingCommand.Create());
 rootCommand.AddCommand(CreateGeoSchemaCommand.Create());
 rootCommand.AddCommand(LoadGeoDataCommand.Create());
+rootCommand.AddCommand(CountGeoDataCommand.Create());
 rootCommand.AddCommand(CleanGeoDataCommand.Create());
 rootCommand.AddCommand(ExportGeoDataCommand.Create());
 rootCommand.AddCommand(ImportGeoDataCommand.Create());
@@ -38,6 +39,7 @@ rootCommand.SetHandler(() =>
     Console.WriteLine("Geographic Data Commands (Volume Testing):");
     Console.WriteLine("  create-geo-schema   Create geographic tables (state, city, zipcode)");
     Console.WriteLine("  load-geo-data       Download and load 42K US ZIP codes");
+    Console.WriteLine("  count-geo-data      Display record counts for geo tables");
     Console.WriteLine("  clean-geo-data      Bulk delete geographic data");
     Console.WriteLine("  export-geo-data     Export geo data to portable ZIP package");
     Console.WriteLine("  import-geo-data     Import geo data from ZIP package");
