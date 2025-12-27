@@ -656,16 +656,24 @@ public static class MigrateGeoDataCommand
         var stateResult = await client.RetrieveMultipleAsync(stateQuery);
         summary.StateCount = stateResult.Entities.Count;
 
-        // Query city count
+        // Query city count (needs paging - 30k+ cities)
         var cityQuery = new QueryExpression("ppds_city")
         {
             ColumnSet = new ColumnSet(false),
             PageInfo = new PagingInfo { Count = 5000, PageNumber = 1 }
         };
-        var cityResult = await client.RetrieveMultipleAsync(cityQuery);
-        summary.CityCount = cityResult.Entities.Count;
+        var totalCities = 0;
+        while (true)
+        {
+            var cityResult = await client.RetrieveMultipleAsync(cityQuery);
+            totalCities += cityResult.Entities.Count;
+            if (!cityResult.MoreRecords) break;
+            cityQuery.PageInfo.PageNumber++;
+            cityQuery.PageInfo.PagingCookie = cityResult.PagingCookie;
+        }
+        summary.CityCount = totalCities;
 
-        // Query zipcode count (may need paging)
+        // Query zipcode count (needs paging - 41k+ zips)
         var zipQuery = new QueryExpression("ppds_zipcode")
         {
             ColumnSet = new ColumnSet(false),
