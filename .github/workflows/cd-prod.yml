@@ -163,14 +163,6 @@ jobs:
       - name: Setup PAC CLI
         uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v1
 
-      - name: Authenticate to Prod environment
-        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v1
-        with:
-          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
-          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
-          client-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
-
       - name: Detect deployment settings
         id: settings
         run: |
@@ -194,6 +186,10 @@ jobs:
           skip-if-same-version: true
           max-retries: 3
           settings-file: ${{ steps.settings.outputs.settings-file }}
+          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
+          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
+          client-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
+          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
 
       - name: Deployment summary
         run: |
