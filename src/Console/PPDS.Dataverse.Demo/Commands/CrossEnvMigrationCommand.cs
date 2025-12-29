@@ -53,29 +53,24 @@ public static class CrossEnvMigrationCommand
             "--dry-run",
             "Export only, don't import to QA");
 
-        var includeM2MOption = new Option<bool>(
-            "--include-m2m",
-            "Include M2M relationships (systemuserroles, teammembership)");
-
         // Use standardized options from GlobalOptionsExtensions
         var verboseOption = GlobalOptionsExtensions.CreateVerboseOption();
         var debugOption = GlobalOptionsExtensions.CreateDebugOption();
 
         command.AddOption(skipSeedOption);
         command.AddOption(dryRunOption);
-        command.AddOption(includeM2MOption);
         command.AddOption(verboseOption);
         command.AddOption(debugOption);
 
-        command.SetHandler(async (bool skipSeed, bool dryRun, bool includeM2M, bool verbose, bool debug) =>
+        command.SetHandler(async (bool skipSeed, bool dryRun, bool verbose, bool debug) =>
         {
             var options = new GlobalOptions
             {
                 Verbose = verbose,
                 Debug = debug
             };
-            Environment.ExitCode = await ExecuteAsync(skipSeed, dryRun, includeM2M, options);
-        }, skipSeedOption, dryRunOption, includeM2MOption, verboseOption, debugOption);
+            Environment.ExitCode = await ExecuteAsync(skipSeed, dryRun, options);
+        }, skipSeedOption, dryRunOption, verboseOption, debugOption);
 
         return command;
     }
@@ -83,7 +78,6 @@ public static class CrossEnvMigrationCommand
     public static async Task<int> ExecuteAsync(
         bool skipSeed,
         bool dryRun,
-        bool includeM2M,
         GlobalOptions options)
     {
         ConsoleWriter.Header("Cross-Environment Migration: Dev -> QA");
@@ -170,7 +164,6 @@ public static class CrossEnvMigrationCommand
 
             var schemaOptions = new SchemaGeneratorOptions
             {
-                IncludeRelationships = includeM2M,
                 IncludeAllFields = true
             };
 

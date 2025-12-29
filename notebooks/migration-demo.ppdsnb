@@ -7,7 +7,7 @@
   "cells": [
     {
       "kind": "markdown",
-      "source": "# PPDS Migration Demo\n\nThis notebook demonstrates the data being migrated using `ppds-migrate` CLI.\n\n## Migration Features Covered\n- **Entity Records**: Accounts, Contacts with lookup relationships\n- **Self-Referential Lookups**: Account parent hierarchy\n- **Polymorphic Lookups**: Contact's parentcustomerid (account or contact)\n- **M2M Relationships**: User-Role assignments, Team memberships\n- **Attribute Filtering**: Exclude audit fields, system fields\n- **User Mapping**: Cross-tenant user ID remapping\n- **Plugin Control**: Disable plugins during bulk import"
+      "source": "# PPDS Migration Demo\n\nThis notebook demonstrates the data being migrated using `ppds` CLI.\n\n## Migration Features Covered\n- **Entity Records**: Accounts, Contacts with lookup relationships\n- **Self-Referential Lookups**: Account parent hierarchy\n- **Polymorphic Lookups**: Contact's parentcustomerid (account or contact)\n- **M2M Relationships**: User-Role assignments, Team memberships\n- **Attribute Filtering**: Exclude audit fields, system fields\n- **User Mapping**: Cross-tenant user ID remapping\n- **Plugin Control**: Disable plugins during bulk import"
     },
     {
       "kind": "markdown",
@@ -103,7 +103,7 @@
     },
     {
       "kind": "markdown",
-      "source": "---\n## CLI Commands Reference\n\n```bash\n# Seed sample data\ndotnet run -- seed\n\n# Export with M2M and filtering\nppds-migrate export \\\n  --schema migration/schema-features.xml \\\n  --output data.zip \\\n  --exclude-attributes createdon,modifiedon,createdby,modifiedby\n\n# Import with user mapping\nppds-migrate import \\\n  --data data.zip \\\n  --user-mapping migration/user-mapping.xml \\\n  --mode Upsert\n\n# Clean sample data\ndotnet run -- clean\n```"
+      "source": "---\n## CLI Commands Reference\n\n```bash\n# Install PPDS CLI (dotnet tool)\ndotnet tool install --global PPDS.Cli --prerelease\n\n# Seed sample data\ndotnet run -- seed\n\n# Export with M2M and filtering\nppds data export \\\n  --schema migration/schema-features.xml \\\n  --output data.zip \\\n  --exclude-attributes createdon,modifiedon,createdby,modifiedby\n\n# Import with user mapping\nppds data import \\\n  --data data.zip \\\n  --user-mapping migration/user-mapping.xml \\\n  --mode Upsert\n\n# Clean sample data\ndotnet run -- clean\n```"
     }
   ]
 }

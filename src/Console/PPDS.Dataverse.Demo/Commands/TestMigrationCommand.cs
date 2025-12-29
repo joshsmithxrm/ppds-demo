@@ -159,7 +159,6 @@ public static class TestMigrationCommand
             Console.Write("  Generating schema... ");
             var schemaOptions = new SchemaGeneratorOptions
             {
-                IncludeRelationships = true,
                 IncludeAllFields = true
             };
             var schema = await schemaGenerator.GenerateAsync(

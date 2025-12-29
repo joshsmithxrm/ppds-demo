@@ -147,7 +147,6 @@ public static class ExportGeoDataCommand
 
             var schemaOptions = new SchemaGeneratorOptions
             {
-                IncludeRelationships = true,
                 IncludeAllFields = true
             };
 

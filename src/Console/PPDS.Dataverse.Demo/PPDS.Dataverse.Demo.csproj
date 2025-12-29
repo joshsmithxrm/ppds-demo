@@ -13,11 +13,8 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.*" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     <PackageReference Include="CsvHelper" Version="33.*" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\..\sdk\src\PPDS.Dataverse\PPDS.Dataverse.csproj" />
-    <ProjectReference Include="..\..\..\..\sdk\src\PPDS.Migration\PPDS.Migration.csproj" />
+    <PackageReference Include="PPDS.Dataverse" Version="1.0.0-beta.1" />
+    <PackageReference Include="PPDS.Migration" Version="1.0.0-beta.1" />
   </ItemGroup>
 
   <ItemGroup>
