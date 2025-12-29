@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Migration Schema demonstrating ppds-migrate advanced features:
+
+  1. M2M Relationships: systemuserroles (User to Security Role)
+  2. Plugin Disable/Enable: disableplugins attribute
+  3. Attribute Filtering: include/exclude patterns (via CLI options)
+
+  See MigrationFeaturesCommand.cs for CLI usage examples.
+-->
+<entities>
+  <!--
+    Account Entity with Plugin Disable
+    ===================================
+    disableplugins="true" - Disables plugins during import for:
+      - Faster bulk imports (no plugin overhead)
+      - Avoiding validation plugins that may reject migrated data
+      - Bypassing integration plugins during initial load
+
+    WARNING: Use with caution - plugins are disabled for security reasons.
+    Ensure you re-enable after migration and run any required post-migration logic.
+  -->
+  <entity name="account" displayname="Account" primaryidfield="accountid" primarynamefield="name" disableplugins="true">
+    <fields>
+      <field name="accountid" type="guid" primaryKey="true" />
+      <field name="name" type="string" />
+      <field name="accountcategorycode" type="optionsetvalue" />
+      <field name="description" type="string" />
+      <field name="telephone1" type="string" />
+      <field name="websiteurl" type="string" />
+      <field name="parentaccountid" type="entityreference" lookupType="account" />
+      <!-- Audit fields - typically excluded via CLI options rather than schema -->
+      <field name="createdon" type="datetime" />
+      <field name="modifiedon" type="datetime" />
+    </fields>
+    <filter>&lt;fetch&gt;&lt;entity name="account"&gt;&lt;filter&gt;&lt;condition attribute="name" operator="like" value="PPDS-%" /&gt;&lt;/filter&gt;&lt;/entity&gt;&lt;/fetch&gt;</filter>
+  </entity>
+
+  <!--
+    Contact Entity - Plugins Enabled (default)
+    ==========================================
+    disableplugins="false" or omitted - Normal plugin execution.
+    Use when you need:
+      - Validation plugins to run on migrated data
+      - Integration plugins to sync to external systems
+      - Workflow triggers for notifications
+  -->
+  <entity name="contact" displayname="Contact" primaryidfield="contactid" primarynamefield="fullname" disableplugins="false">
+    <fields>
+      <field name="contactid" type="guid" primaryKey="true" />
+      <field name="firstname" type="string" />
+      <field name="lastname" type="string" />
+      <field name="fullname" type="string" />
+      <field name="jobtitle" type="string" />
+      <field name="emailaddress1" type="string" />
+      <field name="telephone1" type="string" />
+      <field name="parentcustomerid" type="entityreference" lookupType="account|contact" />
+      <field name="createdon" type="datetime" />
+      <field name="modifiedon" type="datetime" />
+    </fields>
+    <filter>&lt;fetch&gt;&lt;entity name="contact"&gt;&lt;filter&gt;&lt;condition attribute="fullname" operator="like" value="%" /&gt;&lt;/filter&gt;&lt;/entity&gt;&lt;/fetch&gt;</filter>
+  </entity>
+
+  <!--
+    System User Entity with M2M Relationships
+    ==========================================
+    Demonstrates Many-to-Many relationship export/import.
+
+    The systemuserroles relationship associates Users with Security Roles.
+    CMT format groups all roles per user for efficient import.
+
+    M2M Format in data.xml:
+      <m2mrelationship
+        sourceid="user-guid"
+        targetentityname="role"
+        targetentitynameidfield="roleid"
+        m2mrelationshipname="systemuserroles">
+        <targetids>
+          <targetid>role-guid-1</targetid>
+          <targetid>role-guid-2</targetid>
+        </targetids>
+      </m2mrelationship>
+  -->
+  <entity name="systemuser" displayname="User" primaryidfield="systemuserid" primarynamefield="fullname" disableplugins="false">
+    <fields>
+      <field name="systemuserid" type="guid" primaryKey="true" />
+      <field name="fullname" type="string" />
+      <field name="internalemailaddress" type="string" />
+      <field name="domainname" type="string" />
+      <field name="isdisabled" type="boolean" />
+    </fields>
+    <!--
+      M2M Relationships
+      =================
+      relationship attributes:
+        - name: Relationship schema name (systemuserroles)
+        - manyToMany: Indicates M2M relationship (true)
+        - isreflexive: Self-referential relationship (false for user-role)
+        - relatedEntityName: Intersect entity name
+        - m2mTargetEntity: Target entity logical name (role)
+        - m2mTargetEntityPrimaryKey: Target entity's primary key field (roleid)
+    -->
+    <relationships>
+      <relationship
+        name="systemuserroles"
+        manyToMany="true"
+        isreflexive="false"
+        relatedEntityName="systemuserroles"
+        m2mTargetEntity="role"
+        m2mTargetEntityPrimaryKey="roleid" />
+    </relationships>
+  </entity>
+
+  <!--
+    Team Entity with M2M to Users
+    ==============================
+    Another common M2M relationship example.
+    Teams can have multiple members (users), and users can be in multiple teams.
+  -->
+  <entity name="team" displayname="Team" primaryidfield="teamid" primarynamefield="name" disableplugins="false">
+    <fields>
+      <field name="teamid" type="guid" primaryKey="true" />
+      <field name="name" type="string" />
+      <field name="description" type="string" />
+      <field name="teamtype" type="optionsetvalue" />
+    </fields>
+    <relationships>
+      <relationship
+        name="teammembership_association"
+        manyToMany="true"
+        isreflexive="false"
+        relatedEntityName="teammembership"
+        m2mTargetEntity="systemuser"
+        m2mTargetEntityPrimaryKey="systemuserid" />
+    </relationships>
+    <filter>&lt;fetch&gt;&lt;entity name="team"&gt;&lt;filter&gt;&lt;condition attribute="teamtype" operator="eq" value="0" /&gt;&lt;/filter&gt;&lt;/entity&gt;&lt;/fetch&gt;</filter>
+  </entity>
+</entities>

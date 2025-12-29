@@ -13,7 +13,7 @@
   <Stage>20</Stage>
   <IsCustomizable>1</IsCustomizable>
   <IsHidden>0</IsHidden>
-  <SupportedDeployment>0</SupportedDeployment>
+  <SupportedDeployment>2</SupportedDeployment>
   <IntroducedVersion>1.0</IntroducedVersion>
   <SdkMessageProcessingStepImages />
 </SdkMessageProcessingStep>

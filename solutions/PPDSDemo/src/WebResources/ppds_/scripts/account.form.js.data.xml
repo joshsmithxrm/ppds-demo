@@ -3,6 +3,7 @@
   <WebResourceId>{f913c631-18d7-f011-8544-000d3a59b27d}</WebResourceId>
   <Name>ppds_/scripts/account.form.js</Name>
   <DisplayName>Account Form Script</DisplayName>
+  <LanguageCode>0</LanguageCode>
   <WebResourceType>3</WebResourceType>
   <IntroducedVersion>1.0.0.0</IntroducedVersion>
   <IsEnabledForMobileClient>0</IsEnabledForMobileClient>

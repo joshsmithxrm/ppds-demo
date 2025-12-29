@@ -93,7 +93,7 @@ jobs:
 
       - name: Download latest artifact (manual trigger)
         if: steps.source.outputs.run-id == ''
-        uses: dawidd6/action-download-artifact@v11
+        uses: dawidd6/action-download-artifact@v12
         with:
           workflow: ci-build.yml
           branch: develop
@@ -121,14 +121,6 @@ jobs:
       - name: Setup PAC CLI
         uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v1
 
-      - name: Authenticate to QA environment
-        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v1
-        with:
-          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
-          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
-          client-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
-          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
-
       - name: Detect deployment settings
         id: settings
         run: |
@@ -152,6 +144,10 @@ jobs:
           skip-if-same-version: true
           max-retries: 3
           settings-file: ${{ steps.settings.outputs.settings-file }}
+          environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
+          tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
+          client-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
+          client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
 
       - name: Deployment summary
         run: |

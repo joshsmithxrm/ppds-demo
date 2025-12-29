@@ -1,0 +1,109 @@
+{
+  "metadata": {
+    "environmentId": "env-1765563807619-5aegsdec0",
+    "environmentName": "Demo - DEV",
+    "environmentUrl": "https://orgcabef92d.crm.dynamics.com"
+  },
+  "cells": [
+    {
+      "kind": "markdown",
+      "source": "# PPDS Migration Demo\n\nThis notebook demonstrates the data being migrated using `ppds` CLI.\n\n## Migration Features Covered\n- **Entity Records**: Accounts, Contacts with lookup relationships\n- **Self-Referential Lookups**: Account parent hierarchy\n- **Polymorphic Lookups**: Contact's parentcustomerid (account or contact)\n- **M2M Relationships**: User-Role assignments, Team memberships\n- **Attribute Filtering**: Exclude audit fields, system fields\n- **User Mapping**: Cross-tenant user ID remapping\n- **Plugin Control**: Disable plugins during bulk import"
+    },
+    {
+      "kind": "markdown",
+      "source": "---\n## 1. Sample Accounts (PPDS- Prefix)\n\nThese are the seeded test accounts with hierarchical parent-child relationships."
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT \n  accountid,\n  name,\n  parentaccountid,\n  accountcategorycode,\n  telephone1,\n  websiteurl\nFROM account\nWHERE name LIKE 'PPDS-%'\nORDER BY name"
+    },
+    {
+      "kind": "markdown",
+      "source": "### Account Hierarchy\n\nShows parent-child relationships (Contoso Ltd -> Contoso East, Contoso West)."
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT \n  child.name AS [Child Account],\n  parent.name AS [Parent Account]\nFROM account child\nINNER JOIN account parent ON child.parentaccountid = parent.accountid\nWHERE child.name LIKE 'PPDS-%'\nORDER BY parent.name, child.name"
+    },
+    {
+      "kind": "markdown",
+      "source": "---\n## 2. Sample Contacts\n\nContacts linked to accounts via `parentcustomerid` (polymorphic lookup)."
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT \n  c.fullname,\n  c.jobtitle,\n  c.emailaddress1,\n  c.telephone1,\n  a.name AS [Company]\nFROM contact c\nLEFT JOIN account a ON c.parentcustomerid = a.accountid\nWHERE c.fullname LIKE '%Smith%' \n   OR c.fullname LIKE '%Doe%'\n   OR c.fullname LIKE '%Johnson%'\n   OR c.fullname LIKE '%Brown%'\n   OR c.fullname LIKE '%Garcia%'\nORDER BY a.name, c.fullname"
+    },
+    {
+      "kind": "markdown",
+      "source": "### Contacts Per Account\n\nCount of contacts linked to each PPDS sample account."
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT \n  a.name AS [Account],\n  COUNT(c.contactid) AS [Contact Count]\nFROM account a\nLEFT JOIN contact c ON c.parentcustomerid = a.accountid\nWHERE a.name LIKE 'PPDS-%'\nGROUP BY a.accountid, a.name\nORDER BY a.name"
+    },
+    {
+      "kind": "markdown",
+      "source": "---\n## 3. M2M Relationships: User Roles\n\nMany-to-Many relationship between `systemuser` and `role` via `systemuserroles` intersect table.\n\nThis is exported in CMT format:\n```xml\n<m2mrelationship sourceid=\"user-guid\" targetentityname=\"role\" ...>\n  <targetids>\n    <targetid>role-guid-1</targetid>\n    <targetid>role-guid-2</targetid>\n  </targetids>\n</m2mrelationship>\n```"
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT \n  u.fullname AS [User],\n  r.name AS [Security Role]\nFROM systemuserroles sur\nINNER JOIN systemuser u ON sur.systemuserid = u.systemuserid\nINNER JOIN role r ON sur.roleid = r.roleid\nWHERE u.isdisabled = 0\nORDER BY u.fullname, r.name"
+    },
+    {
+      "kind": "markdown",
+      "source": "### Role Assignment Counts\n\nNumber of roles assigned to each active user."
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT TOP 20\n  u.fullname AS [User],\n  u.internalemailaddress AS [Email],\n  COUNT(sur.roleid) AS [Role Count]\nFROM systemuser u\nLEFT JOIN systemuserroles sur ON u.systemuserid = sur.systemuserid\nWHERE u.isdisabled = 0\nGROUP BY u.systemuserid, u.fullname, u.internalemailaddress\nORDER BY [Role Count] DESC"
+    },
+    {
+      "kind": "markdown",
+      "source": "---\n## 4. M2M Relationships: Team Memberships\n\nMany-to-Many relationship between `team` and `systemuser` via `teammembership` intersect table."
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT \n  t.name AS [Team],\n  t.teamtype,\n  COUNT(tm.systemuserid) AS [Member Count]\nFROM team t\nLEFT JOIN teammembership tm ON t.teamid = tm.teamid\nWHERE t.teamtype = 0  -- Owner teams only\nGROUP BY t.teamid, t.name, t.teamtype\nORDER BY [Member Count] DESC"
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT TOP 20\n  t.name AS [Team],\n  u.fullname AS [Member]\nFROM teammembership tm\nINNER JOIN team t ON tm.teamid = t.teamid\nINNER JOIN systemuser u ON tm.systemuserid = u.systemuserid\nWHERE t.teamtype = 0\n  AND u.isdisabled = 0\nORDER BY t.name, u.fullname"
+    },
+    {
+      "kind": "markdown",
+      "source": "---\n## 5. Users for User Mapping\n\nWhen migrating between tenants, user GUIDs differ. The `--user-mapping` option remaps:\n- `ownerid` fields\n- `createdby` / `modifiedby` audit fields\n- Any user lookup fields"
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT TOP 20\n  systemuserid,\n  fullname,\n  domainname,\n  internalemailaddress,\n  isdisabled\nFROM systemuser\nWHERE isdisabled = 0\nORDER BY fullname"
+    },
+    {
+      "kind": "markdown",
+      "source": "---\n## 6. Migration Verification Queries\n\nAfter running `ppds-migrate import`, use these queries to verify data integrity."
+    },
+    {
+      "kind": "markdown",
+      "source": "### Record Counts"
+    },
+    {
+      "kind": "sql",
+      "source": "SELECT 'Accounts' AS [Entity], COUNT(*) AS [Count] FROM account WHERE name LIKE 'PPDS-%'\nUNION ALL\nSELECT 'Contacts', COUNT(*) FROM contact WHERE fullname LIKE '%Smith%' OR fullname LIKE '%Garcia%'"
+    },
+    {
+      "kind": "markdown",
+      "source": "### Relationship Integrity\n\nVerify lookups were properly remapped during import."
+    },
+    {
+      "kind": "sql",
+      "source": "-- Orphaned contacts (parentcustomerid points to non-existent account)\nSELECT \n  c.fullname,\n  c.parentcustomerid AS [Orphaned Lookup]\nFROM contact c\nLEFT JOIN account a ON c.parentcustomerid = a.accountid\nWHERE c.parentcustomerid IS NOT NULL\n  AND a.accountid IS NULL"
+    },
+    {
+      "kind": "sql",
+      "source": "-- Orphaned child accounts (parentaccountid points to non-existent parent)\nSELECT \n  child.name,\n  child.parentaccountid AS [Orphaned Parent]\nFROM account child\nLEFT JOIN account parent ON child.parentaccountid = parent.accountid\nWHERE child.parentaccountid IS NOT NULL\n  AND parent.accountid IS NULL\n  AND child.name LIKE 'PPDS-%'"
+    },
+    {
+      "kind": "markdown",
+      "source": "---\n## CLI Commands Reference\n\n```bash\n# Install PPDS CLI (dotnet tool)\ndotnet tool install --global PPDS.Cli --prerelease\n\n# Seed sample data\ndotnet run -- seed\n\n# Export with M2M and filtering\nppds data export \\\n  --schema migration/schema-features.xml \\\n  --output data.zip \\\n  --exclude-attributes createdon,modifiedon,createdby,modifiedby\n\n# Import with user mapping\nppds data import \\\n  --data data.zip \\\n  --user-mapping migration/user-mapping.xml \\\n  --mode Upsert\n\n# Clean sample data\ndotnet run -- clean\n```"
+    }
+  ]
+}

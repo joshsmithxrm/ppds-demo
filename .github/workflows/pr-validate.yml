@@ -296,32 +296,16 @@ jobs:
           echo "managed_size=$MANAGED_SIZE" >> $GITHUB_OUTPUT
           echo "unmanaged_size=$UNMANAGED_SIZE" >> $GITHUB_OUTPUT
 
-      # Authenticate for Solution Checker (requires secrets)
-      - name: Authenticate for Solution Checker
-        id: auth
-        if: env.RUN_CHECKER == 'true' && vars.DATAVERSE_ENV_URL != ''
-        uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v1
-        with:
-          environment-url: ${{ vars.DATAVERSE_ENV_URL }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        continue-on-error: true
-
+      # Run Solution Checker (anonymous mode - no auth required)
       - name: Run Solution Checker
         id: check
-        if: env.RUN_CHECKER == 'true' && steps.auth.outcome == 'success'
+        if: env.RUN_CHECKER == 'true'
         uses: joshsmithxrm/ppds-alm/.github/actions/check-solution@v1
         with:
           solution-path: ${{ steps.pack-managed.outputs.solution-path }}
           fail-on-level: ${{ env.CHECKER_LEVEL }}
           geography: unitedstates
         continue-on-error: true
-
-      - name: Skip Solution Checker notice
-        if: env.RUN_CHECKER == 'true' && steps.auth.outcome != 'success'
-        run: |
-          echo "::notice::Solution Checker skipped - authentication not available (secrets not configured or forked PR)"
 
       - name: Validation summary
         run: |
@@ -376,20 +360,12 @@ jobs:
 
           if [ "${{ env.RUN_CHECKER }}" != "true" ]; then
             echo "_Solution Checker was disabled_" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ steps.auth.outcome }}" != "success" ]; then
-            echo "_Solution Checker skipped - authentication not available_" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "To enable Solution Checker, configure these repository secrets:" >> $GITHUB_STEP_SUMMARY
-            echo "- \`AZURE_TENANT_ID\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`AZURE_CLIENT_ID\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`AZURE_CLIENT_SECRET\`" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "And this repository variable:" >> $GITHUB_STEP_SUMMARY
-            echo "- \`DATAVERSE_ENV_URL\`" >> $GITHUB_STEP_SUMMARY
           else
             CHECKER_PASSED="${{ steps.check.outputs.passed }}"
             if [ "$CHECKER_PASSED" = "true" ]; then
               echo "**Status: PASSED** (threshold: ${{ env.CHECKER_LEVEL }})" >> $GITHUB_STEP_SUMMARY
+            elif [ -z "$CHECKER_PASSED" ]; then
+              echo "**Status: ERROR** (checker may have failed to run)" >> $GITHUB_STEP_SUMMARY
             else
               echo "**Status: FAILED** (threshold: ${{ env.CHECKER_LEVEL }})" >> $GITHUB_STEP_SUMMARY
             fi
@@ -410,7 +386,7 @@ jobs:
           echo "PR: #${{ github.event.pull_request.number || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
 
       - name: Fail if Solution Checker failed
-        if: env.RUN_CHECKER == 'true' && steps.auth.outcome == 'success' && steps.check.outputs.passed == 'false'
+        if: env.RUN_CHECKER == 'true' && steps.check.outputs.passed == 'false'
         run: |
           echo "::error::Solution Checker found issues exceeding the ${{ env.CHECKER_LEVEL }} threshold"
           echo "Please review the Solution Checker results above and address the issues."

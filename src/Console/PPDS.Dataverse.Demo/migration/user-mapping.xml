@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<usermappings>
+  <!--
+    User Mapping File for ppds-migrate CLI
+
+    Maps source system user GUIDs to target system users.
+    Used when migrating data between environments where user IDs differ.
+
+    Usage: ppds-migrate import with user-mapping option
+
+    Notes:
+      Source IDs come from the export environment
+      Target IDs should exist in the import environment
+      Unmapped users will retain their original ID (may cause lookup failures)
+  -->
+
+  <!-- System Administrator (example: replace with actual GUIDs) -->
+  <usermapping
+    sourceUserId="43ab23b2-87d7-f011-8543-000d3a3b9cba"
+    targetUserId="00000000-0000-0000-0000-000000000001"
+    comment="Admin User - Source to Target" />
+
+  <!-- Integration Service Account -->
+  <usermapping
+    sourceUserId="ee1d305b-88d7-f011-8543-000d3a3b9cba"
+    targetUserId="00000000-0000-0000-0000-000000000002"
+    comment="Integration Service Account" />
+
+  <!-- Power Automate Service Account -->
+  <usermapping
+    sourceUserId="51935cec-88d7-f011-8543-000d3a3b9cba"
+    targetUserId="00000000-0000-0000-0000-000000000003"
+    comment="Power Automate Flow Owner" />
+</usermappings>

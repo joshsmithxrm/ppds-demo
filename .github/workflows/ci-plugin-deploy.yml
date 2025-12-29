@@ -95,40 +95,38 @@ jobs:
       - name: Setup PAC CLI
         uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v1
 
-      # Authenticate to Dev environment
-      - name: Authenticate to Dev environment
+      # Deploy plugins (auth is managed by pac-auth action)
+      - name: Deploy plugins to Dev
         uses: joshsmithxrm/ppds-alm/.github/actions/pac-auth@v1
         with:
           environment-url: ${{ vars.POWERPLATFORM_ENVIRONMENT_URL }}
           tenant-id: ${{ vars.POWERPLATFORM_TENANT_ID }}
           client-id: ${{ vars.POWERPLATFORM_CLIENT_ID }}
           client-secret: ${{ secrets.POWERPLATFORM_CLIENT_SECRET }}
+          run: |
+            pwsh -Command '
+              $params = @{
+                Environment = "Dev"
+                Verbose = $true
+              }
 
-      # Deploy plugins
-      - name: Deploy plugins to Dev
-        shell: pwsh
-        run: |
-          $params = @{
-            Environment = "Dev"
-            Verbose = $true
-          }
+              # Add project filter if specified
+              if ("${{ github.event.inputs.project }}") {
+                $params.Project = "${{ github.event.inputs.project }}"
+              }
 
-          # Add project filter if specified
-          if ("${{ github.event.inputs.project }}") {
-            $params.Project = "${{ github.event.inputs.project }}"
-          }
+              # Add Force flag if specified
+              if ("${{ github.event.inputs.force }}" -eq "true") {
+                $params.Force = $true
+              }
 
-          # Add Force flag if specified
-          if ("${{ github.event.inputs.force }}" -eq "true") {
-            $params.Force = $true
-          }
+              # Add WhatIf flag if dry run
+              if ("${{ github.event.inputs.dry_run }}" -eq "true") {
+                $params.WhatIf = $true
+              }
 
-          # Add WhatIf flag if dry run
-          if ("${{ github.event.inputs.dry_run }}" -eq "true") {
-            $params.WhatIf = $true
-          }
-
-          ./tools/Deploy-Plugins.ps1 @params
+              ./tools/Deploy-Plugins.ps1 @params
+            '
 
       # Summary
       - name: Deployment summary

@@ -8,45 +8,297 @@
 
 ## 📊 Solution Context
 
-| Property | Value |
-|----------|-------|
-| Solution Name | `PPDSDemo` |
-| Publisher Prefix | `ppds` |
-| Schema Prefix | `ppds_` |
-| Entity Binding | Early-bound (see `src/Entities/`) |
+| Property         | Value                                       |
+| ---------------- | ------------------------------------------- |
+| Solution Name    | `PPDSDemo`                                  |
+| Publisher Prefix | `ppds`                                      |
+| Schema Prefix    | `ppds_`                                     |
+| Entity Binding   | Early-bound (see `src/Entities/`)           |
 | Plugin Framework | PPDS.Plugins (attribute-based registration) |
+
+---
+
+## 🔐 Dataverse Connection (User Secrets)
+
+The demo app uses .NET User Secrets for Dataverse credentials with **typed configuration**.
+
+| Property            | Value                           |
+| ------------------- | ------------------------------- |
+| UserSecretsId       | `ppds-dataverse-demo`           |
+| Config Section      | `Dataverse:Environments:{Name}` |
+| Default Environment | `Dataverse:DefaultEnvironment`  |
+
+### Configuration Structure
+
+All environments live under `Dataverse:Environments:*`. Each environment has its own URL, connections, and uses shared pool settings:
+
+```json
+{
+  "Dataverse": {
+    "DefaultEnvironment": "Dev",
+    "Environments": {
+      "Dev": {
+        "Url": "https://dev.crm.dynamics.com",
+        "Connections": [
+          { "Name": "Primary", "ClientId": "...", "ClientSecret": "..." }
+        ]
+      },
+      "QA": {
+        "Url": "https://qa.crm.dynamics.com",
+        "Connections": [
+          { "Name": "Primary", "ClientId": "...", "ClientSecret": "..." }
+        ]
+      }
+    },
+    "Pool": { "MinPoolSize": 1, "DisableAffinityCookie": true }
+  }
+}
+```
+
+### Configuration Properties
+
+| Property                                                  | Purpose                          |
+| --------------------------------------------------------- | -------------------------------- |
+| `Dataverse:Environments:{env}:Url`                        | Environment URL                  |
+| `Dataverse:Environments:{env}:Connections:N:ClientId`     | Azure AD App Registration ID     |
+| `Dataverse:Environments:{env}:Connections:N:ClientSecret` | Client secret (dev) or env var name containing secret (prod) |
+| `Dataverse:DefaultEnvironment`                            | Default environment for commands |
+
+### Single Environment Setup
+
+For most work, configure just the Dev environment:
+
+```powershell
+cd src/Console/PPDS.Dataverse.Demo
+dotnet user-secrets set "Dataverse:Environments:Dev:Url" "https://dev.crm.dynamics.com"
+dotnet user-secrets set "Dataverse:Environments:Dev:Connections:0:ClientId" "your-client-id"
+dotnet user-secrets set "Dataverse:Environments:Dev:Connections:0:ClientSecret" "your-client-secret"
+```
+
+### Multi-Environment Setup (Cross-Env Migration)
+
+For cross-environment operations, add both environments:
+
+```powershell
+cd src/Console/PPDS.Dataverse.Demo
+
+# Dev environment
+dotnet user-secrets set "Dataverse:Environments:Dev:Url" "https://dev.crm.dynamics.com"
+dotnet user-secrets set "Dataverse:Environments:Dev:Connections:0:ClientId" "dev-client-id"
+dotnet user-secrets set "Dataverse:Environments:Dev:Connections:0:ClientSecret" "dev-secret"
+
+# QA environment
+dotnet user-secrets set "Dataverse:Environments:QA:Url" "https://qa.crm.dynamics.com"
+dotnet user-secrets set "Dataverse:Environments:QA:Connections:0:ClientId" "qa-client-id"
+dotnet user-secrets set "Dataverse:Environments:QA:Connections:0:ClientSecret" "qa-secret"
+```
+
+### Production Configuration
+
+For production, use environment variables instead of direct secrets:
+
+```json
+{
+  "Dataverse": {
+    "Environments": {
+      "Prod": {
+        "Url": "https://prod.crm.dynamics.com",
+        "Connections": [
+          {
+            "Name": "Primary",
+            "ClientId": "...",
+            "ClientSecret": "DATAVERSE_SECRET"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+The platform (Azure App Service, GitHub Actions, etc.) sets the `DATAVERSE_SECRET` environment variable.
+
+### Check Current Connections
+
+```powershell
+dotnet user-secrets list --project src/Console/PPDS.Dataverse.Demo
+```
+
+### Command Connection Usage
+
+| Command                 | Environment              | Notes                |
+| ----------------------- | ------------------------ | -------------------- |
+| `whoami`                | DefaultEnvironment (Dev) | Uses connection pool |
+| `demo-features`         | DefaultEnvironment (Dev) | Uses connection pool |
+| `seed`                  | Dev                      | Explicit environment |
+| `clean`                 | Dev (or `--env QA`)      | Explicit environment |
+| `load-geo-data`         | DefaultEnvironment       | Uses connection pool |
+| `clean-geo-data`        | DefaultEnvironment       | Uses connection pool |
+| `migrate-to-qa`         | Dev → QA                 | Cross-environment    |
+| `generate-user-mapping` | Dev → QA                 | Cross-environment    |
+
+### Why This Structure?
+
+1. **Single location** - All environments under `Dataverse:Environments:*`
+2. **No duplication** - Shared pool settings apply to all environments
+3. **Explicit targeting** - SDK creates pool per environment: `AddDataverseConnectionPool(config, environment: "Dev")`
+
+---
+
+## 🔌 Connection Pool Patterns (PPDS.Dataverse)
+
+### Always dispose pooled clients
+
+```csharp
+// ✅ Correct - automatic return to pool
+await using var client = await _pool.GetClientAsync();
+await client.CreateAsync(entity);
+
+// ❌ Wrong - connection leak (blocks pool)
+var client = await _pool.GetClientAsync();
+await client.CreateAsync(entity);
+// forgot to dispose - connection never returned
+```
+
+### Never store pooled clients in fields
+
+```csharp
+// ❌ Wrong - storing client leads to stale connections
+public class MyService
+{
+    private IPooledClient _client; // DON'T DO THIS
+}
+
+// ✅ Correct - get per operation, dispose immediately
+public async Task DoWorkAsync()
+{
+    await using var client = await _pool.GetClientAsync();
+    await client.CreateAsync(entity);
+}
+```
+
+### Use server-recommended parallelism
+
+```csharp
+// ✅ Correct - query dynamically
+await using var client = await _pool.GetClientAsync();
+int dop = client.RecommendedDegreesOfParallelism;
+
+// ❌ Wrong - hardcoded value
+var options = new ParallelOptions { MaxDegreeOfParallelism = 10 }; // DON'T HARDCODE
+```
+
+---
+
+## 📦 Bulk Operations Patterns (PPDS.Dataverse)
+
+### When to use bulk APIs
+
+| Records | API                                                | Throughput |
+| ------- | -------------------------------------------------- | ---------- |
+| <10     | Single requests                                    | ~50K/hr    |
+| 10+     | `CreateMultiple`/`UpdateMultiple`/`UpsertMultiple` | ~10M/hr    |
+
+### UpsertMultiple alternate key pitfall
+
+```csharp
+// ✅ Correct - key in KeyAttributes ONLY
+entity.KeyAttributes["ppds_code"] = "12345";
+entity["ppds_name"] = "Value";
+
+// ❌ Wrong - causes "item with same key already added" error
+entity.KeyAttributes["ppds_code"] = "12345";
+entity["ppds_code"] = "12345";  // DO NOT set key in Attributes too
+```
+
+### Handle BulkOperationResult errors
+
+```csharp
+var result = await _bulk.UpsertMultipleAsync("ppds_entity", entities);
+
+// Errors are returned, not thrown
+if (!result.IsSuccess)
+{
+    foreach (var error in result.Errors)
+    {
+        _logger.LogError("Record {Index}: [{Code}] {Message}",
+            error.Index, error.ErrorCode, error.Message);
+    }
+}
+
+// Available properties: SuccessCount, FailureCount, Duration, CreatedCount, UpdatedCount
+```
+
+---
+
+## 🔧 Plugin Registration (PPDS.Plugins)
+
+### PluginStepAttribute
+
+```csharp
+[PluginStep(
+    Message = "Create",                    // Required: Create, Update, Delete, etc.
+    EntityLogicalName = "account",         // Required: logical name
+    Stage = PluginStage.PreOperation,      // 10=PreValidation, 20=PreOperation, 40=PostOperation
+    Mode = PluginMode.Synchronous,         // Synchronous (default) or Asynchronous
+    FilteringAttributes = "name,phone")]   // Optional: comma-separated (Update only)
+public class AccountCreatePlugin : PluginBase { }
+```
+
+### PluginImageAttribute
+
+```csharp
+[PluginImage(
+    ImageType = PluginImageType.PreImage,  // PreImage, PostImage, or Both
+    Name = "PreImage",                     // Access via context.PreEntityImages["PreImage"]
+    Attributes = "name,telephone1")]       // Comma-separated columns to capture
+public class AccountUpdatePlugin : PluginBase { }
+```
 
 ---
 
 ## 🚫 NEVER
 
-| Rule | Why |
-|------|-----|
-| `Console.WriteLine` in plugins | Sandbox blocks it; use `ITracingService` |
-| Hardcoded GUIDs | Breaks across environments; use config or queries |
-| `Xrm.Page` in JavaScript | Deprecated since v9; use `formContext` |
-| `alert()` in web resources | Blocked in UCI; use `Xrm.Navigation.openAlertDialog` |
-| Static state in plugins | Sandbox recycles instances; state is lost |
-| External assemblies in plugins | Sandbox whitelist only; ILMerge if needed |
-| Separate Managed/Unmanaged folders | Use `--packagetype Both` for unified source |
-| PR directly to main | Always target `develop` first |
-| Squash merge develop→main | Use regular merge to preserve feature commits |
-| Sync plugins in Pre-Create | Entity doesn't exist yet; use Post-Create |
+| Rule                                                       | Why                                                         |
+| ---------------------------------------------------------- | ----------------------------------------------------------- |
+| **Modify files outside `demo/`**                           | This repo only; sdk/, tools/, extension/ are separate repos |
+| `Console.WriteLine` in plugins                             | Sandbox blocks it; use `ITracingService`                    |
+| Hardcoded GUIDs                                            | Breaks across environments; use config or queries           |
+| `Xrm.Page` in JavaScript                                   | Deprecated since v9; use `formContext`                      |
+| `alert()` in web resources                                 | Blocked in UCI; use `Xrm.Navigation.openAlertDialog`        |
+| Static state in plugins                                    | Sandbox recycles instances; state is lost                   |
+| External assemblies in plugins                             | Sandbox whitelist only; ILMerge if needed                   |
+| Separate Managed/Unmanaged folders                         | Use `--packagetype Both` for unified source                 |
+| PR directly to main                                        | Always target `develop` first                               |
+| Squash merge develop→main                                  | Use regular merge to preserve feature commits               |
+| Sync plugins in Pre-Create                                 | Entity doesn't exist yet; use Post-Create                   |
+| Create `ServiceClient` per request                         | 42,000x slower than pool; use `IDataverseConnectionPool`    |
+| Store `IPooledClient` in fields                            | Get per operation; dispose immediately with `await using`   |
+| Hardcode parallelism values                                | Query `RecommendedDegreesOfParallelism` dynamically         |
+| Set alternate key in both `KeyAttributes` AND `Attributes` | Causes "duplicate key" error on upsert                      |
+
+> **Cross-Repo Changes:** If a fix requires changes to `sdk/`, `tools/`, `extension/`, or `alm/`,
+> describe the proposed change and get approval first. Do NOT edit files in other repositories.
 
 ---
 
 ## ✅ ALWAYS
 
-| Rule | Why |
-|------|-----|
-| `ITracingService` for debugging | Only way to get runtime output in sandbox |
+| Rule                                             | Why                                                |
+| ------------------------------------------------ | -------------------------------------------------- |
+| `ITracingService` for debugging                  | Only way to get runtime output in sandbox          |
 | try/catch with `InvalidPluginExecutionException` | Platform requires this type for user-facing errors |
-| Check `InputParameters.Contains("Target")` | Not all messages have Target; prevents null ref |
-| `formContext` from execution context | Required pattern since Xrm.Page deprecation |
-| Namespace pattern in JS (`PPDSDemo.Account`) | Avoids global pollution and naming conflicts |
-| Early-bound entities for type safety | Compile-time checking prevents runtime errors |
-| Deployment settings per environment | Environment-specific connection refs and variables |
-| Conventional commits | `feat:`, `fix:`, `chore:` for clear history |
+| Check `InputParameters.Contains("Target")`       | Not all messages have Target; prevents null ref    |
+| `formContext` from execution context             | Required pattern since Xrm.Page deprecation        |
+| Namespace pattern in JS (`PPDSDemo.Account`)     | Avoids global pollution and naming conflicts       |
+| Early-bound entities for type safety             | Compile-time checking prevents runtime errors      |
+| Deployment settings per environment              | Environment-specific connection refs and variables |
+| Conventional commits                             | `feat:`, `fix:`, `chore:` for clear history        |
+| Dispose pooled clients with `await using`        | Returns connection to pool; prevents leaks         |
+| Use bulk APIs for 10+ records                    | 200x throughput vs single requests                 |
+| Check `BulkOperationResult.IsSuccess`            | Errors are returned in result, not thrown          |
+| Inherit plugins from `PluginBase`                | Standardized error handling and tracing            |
+| Use `PluginStepAttribute` for registration       | Declarative; tooling reads metadata from assembly  |
 
 ---
 
@@ -95,34 +347,35 @@ public void Execute(IServiceProvider serviceProvider)
 
 ## 🎯 When to Use What
 
-| Scenario | Use | Why |
-|----------|-----|-----|
-| Sync validation/modification | **Plugin (Pre-Operation)** | Runs in transaction, can modify/cancel |
-| Post-save automation | **Plugin (Post-Operation Async)** | Non-blocking, retries on failure |
-| User-triggered automation | **Power Automate** | Easier to modify, visible to makers |
-| Long-running process (>2 min) | **Azure Function** | No platform timeout limits |
-| External system integration | **Custom API + Azure** | Clean contract, scalable |
-| Simple field calculations | **Calculated/Rollup columns** | Zero code, platform-managed |
+| Scenario                      | Use                               | Why                                    |
+| ----------------------------- | --------------------------------- | -------------------------------------- |
+| Sync validation/modification  | **Plugin (Pre-Operation)**        | Runs in transaction, can modify/cancel |
+| Post-save automation          | **Plugin (Post-Operation Async)** | Non-blocking, retries on failure       |
+| User-triggered automation     | **Power Automate**                | Easier to modify, visible to makers    |
+| Long-running process (>2 min) | **Azure Function**                | No platform timeout limits             |
+| External system integration   | **Custom API + Azure**            | Clean contract, scalable               |
+| Simple field calculations     | **Calculated/Rollup columns**     | Zero code, platform-managed            |
 
 ---
 
 ## 📛 Naming Conventions
 
 Dataverse uses two name formats for schema objects:
+
 - **Logical Name**: Always lowercase (`ppds_customerrecord`)
 - **Schema Name**: PascalCase with lowercase prefix (`ppds_CustomerRecord`)
 
-| Component | Logical Name | Schema Name |
-|-----------|--------------|-------------|
-| Tables | `ppds_demorecord` | `ppds_DemoRecord` |
-| Columns | `ppds_firstname` | `ppds_FirstName` |
-| Option Sets | `ppds_status` | `ppds_Status` |
+| Component   | Logical Name      | Schema Name       |
+| ----------- | ----------------- | ----------------- |
+| Tables      | `ppds_demorecord` | `ppds_DemoRecord` |
+| Columns     | `ppds_firstname`  | `ppds_FirstName`  |
+| Option Sets | `ppds_status`     | `ppds_Status`     |
 
-| Component | Convention | Example |
-|-----------|------------|---------|
-| Web Resources | `prefix_/path/name.ext` | `ppds_/scripts/account.form.js` |
-| Plugin Classes | `{Entity}{Message}Plugin` | `AccountCreatePlugin` |
-| Plugin Steps | `{Entity}: {Message} - {Description}` | `account: Create - Validate tax ID` |
+| Component      | Convention                            | Example                             |
+| -------------- | ------------------------------------- | ----------------------------------- |
+| Web Resources  | `prefix_/path/name.ext`               | `ppds_/scripts/account.form.js`     |
+| Plugin Classes | `{Entity}{Message}Plugin`             | `AccountCreatePlugin`               |
+| Plugin Steps   | `{Entity}: {Message} - {Description}` | `account: Create - Validate tax ID` |
 
 **In code:** Use logical names for API calls (`account`, `ppds_firstname`). Early-bound classes use Schema Names for properties.
 
@@ -175,11 +428,11 @@ pac modelbuilder build --outdirectory src/Entities/PPDSDemo.Entities
 
 ## 🔀 Git Workflow
 
-| Flow | Merge Strategy | Why |
-|------|----------------|-----|
-| `feature/*` → `develop` | Squash | Clean history, one commit per feature |
-| `develop` → `main` | Regular merge | Preserve features, clear release points |
-| `hotfix/*` → `main` | Regular merge | Then cherry-pick to develop |
+| Flow                    | Merge Strategy | Why                                     |
+| ----------------------- | -------------- | --------------------------------------- |
+| `feature/*` → `develop` | Squash         | Clean history, one commit per feature   |
+| `develop` → `main`      | Regular merge  | Preserve features, clear release points |
+| `hotfix/*` → `main`     | Regular merge  | Then cherry-pick to develop             |
 
 **Automated CI/CD:** Exports from Dev commit to `develop` automatically. Merges to `develop` deploy to QA. Merges to `main` deploy to Prod.
 
@@ -188,12 +441,14 @@ pac modelbuilder build --outdirectory src/Entities/PPDSDemo.Entities
 ## 📚 Reference Documentation
 
 ### Strategy (Why)
+
 - [ALM_OVERVIEW.md](docs/strategy/ALM_OVERVIEW.md) - ALM philosophy and approach
 - [BRANCHING_STRATEGY.md](docs/strategy/BRANCHING_STRATEGY.md) - Git workflow details
 - [ENVIRONMENT_STRATEGY.md](docs/strategy/ENVIRONMENT_STRATEGY.md) - Dev/QA/Prod setup
 - [PIPELINE_STRATEGY.md](docs/strategy/PIPELINE_STRATEGY.md) - CI/CD design
 
 ### Reference (How)
+
 - [PLUGIN_COMPONENTS_REFERENCE.md](docs/reference/PLUGIN_COMPONENTS_REFERENCE.md) - Plugin patterns
 - [WEBRESOURCE_PATTERNS.md](docs/reference/WEBRESOURCE_PATTERNS.md) - JavaScript/TypeScript
 - [SOLUTION_STRUCTURE_REFERENCE.md](docs/reference/SOLUTION_STRUCTURE_REFERENCE.md) - Solution packaging
@@ -201,6 +456,7 @@ pac modelbuilder build --outdirectory src/Entities/PPDSDemo.Entities
 - [TESTING_PATTERNS.md](docs/reference/TESTING_PATTERNS.md) - Unit testing with FakeXrmEasy
 
 ### Guides (Step-by-Step)
+
 - [GETTING_STARTED_GUIDE.md](docs/guides/GETTING_STARTED_GUIDE.md) - Initial setup
 - [ENVIRONMENT_SETUP_GUIDE.md](docs/guides/ENVIRONMENT_SETUP_GUIDE.md) - Environment configuration
 - [BRANCH_PROTECTION_GUIDE.md](docs/guides/BRANCH_PROTECTION_GUIDE.md) - GitHub rulesets
@@ -211,6 +467,7 @@ pac modelbuilder build --outdirectory src/Entities/PPDSDemo.Entities
 ## ⚖️ Decision Presentation
 
 When presenting choices or asking questions:
+
 1. **Lead with your recommendation** and rationale
 2. **List alternatives considered** and why they're not preferred
 3. **Ask for confirmation**, not open-ended input

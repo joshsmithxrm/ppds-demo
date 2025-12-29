@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Migration Schema for PPDS Demo Sample Data
+
+  This schema defines the entities to export/import for data migration demos.
+  Use with ppds-migrate CLI:
+
+    ppds-migrate export -\-schema migration/schema.xml -\-output data.zip
+    ppds-migrate import -\-data data.zip
+
+  The filter ensures only PPDS- prefixed sample records are included.
+-->
+<entities>
+  <!--
+    Account entity
+    Export accounts with PPDS- prefix (sample data only)
+    Includes parent/child relationships via parentaccountid
+  -->
+  <entity name="account" displayname="Account">
+    <filter>
+      <condition attribute="name" operator="like" value="PPDS-%" />
+    </filter>
+    <attributes>
+      <attribute name="accountid" />
+      <attribute name="name" />
+      <attribute name="parentaccountid" />
+      <attribute name="accountcategorycode" />
+      <attribute name="description" />
+      <attribute name="telephone1" />
+      <attribute name="websiteurl" />
+      <attribute name="createdon" />
+      <attribute name="modifiedon" />
+    </attributes>
+  </entity>
+
+  <!--
+    Contact entity
+    Export contacts linked to PPDS- prefixed accounts
+    Includes relationship to parent account via parentcustomerid
+  -->
+  <entity name="contact" displayname="Contact">
+    <filter>
+      <condition attribute="fullname" operator="like" value="PPDS-%" />
+    </filter>
+    <attributes>
+      <attribute name="contactid" />
+      <attribute name="firstname" />
+      <attribute name="lastname" />
+      <attribute name="fullname" />
+      <attribute name="jobtitle" />
+      <attribute name="parentcustomerid" />
+      <attribute name="emailaddress1" />
+      <attribute name="telephone1" />
+      <attribute name="createdon" />
+      <attribute name="modifiedon" />
+    </attributes>
+  </entity>
+</entities>

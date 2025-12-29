@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Geo Data Migration Schema for Cross-Environment Migration
+
+  This schema defines the geographic reference data entities to export/import.
+  Use with ppds-migrate CLI or via migrate-geo-data demo command:
+
+    ppds-migrate export --schema migration/geo-schema.xml --output geo-data.zip --env Dev
+    ppds-migrate import --data geo-data.zip --mode Upsert --env QA
+
+  No filter applied - exports all geographic records.
+
+  Alternate keys enable idempotent upsert across environments:
+    - ppds_state: ppds_ak_abbreviation (ppds_abbreviation e.g., "CA")
+    - ppds_zipcode: ppds_ak_code (ppds_code e.g., "90210")
+
+  Import order (respects lookup dependencies):
+    1. ppds_state (no dependencies)
+    2. ppds_city (lookup to ppds_state)
+    3. ppds_zipcode (lookup to ppds_state)
+
+  Note: No user mapping required - reference data has no ownership fields.
+-->
+<entities>
+  <!--
+    State entity - US states and territories
+    No dependencies, imported first
+    Alternate key: ppds_abbreviation (2-letter code)
+  -->
+  <entity name="ppds_state" displayname="State" disableplugins="true">
+    <attributes>
+      <attribute name="ppds_stateid" />
+      <attribute name="ppds_name" />
+      <attribute name="ppds_abbreviation" />
+      <attribute name="ppds_fipscode" />
+      <attribute name="ppds_population" />
+    </attributes>
+  </entity>
+
+  <!--
+    City entity - US cities
+    Depends on ppds_state via ppds_stateid lookup
+    Note: No alternate key defined - uses primary key matching
+  -->
+  <entity name="ppds_city" displayname="City" disableplugins="true">
+    <attributes>
+      <attribute name="ppds_cityid" />
+      <attribute name="ppds_name" />
+      <attribute name="ppds_stateid" />
+      <attribute name="ppds_county" />
+      <attribute name="ppds_latitude" />
+      <attribute name="ppds_longitude" />
+      <attribute name="ppds_population" />
+    </attributes>
+  </entity>
+
+  <!--
+    ZIP Code entity - US postal codes
+    Depends on ppds_state via ppds_stateid lookup
+    Alternate key: ppds_code (5-digit ZIP)
+  -->
+  <entity name="ppds_zipcode" displayname="ZIP Code" disableplugins="true">
+    <attributes>
+      <attribute name="ppds_zipcodeid" />
+      <attribute name="ppds_code" />
+      <attribute name="ppds_stateid" />
+      <attribute name="ppds_cityname" />
+      <attribute name="ppds_county" />
+      <attribute name="ppds_latitude" />
+      <attribute name="ppds_longitude" />
+      <attribute name="ppds_population" />
+      <attribute name="ppds_timezone" />
+    </attributes>
+  </entity>
+</entities>

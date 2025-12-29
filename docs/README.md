@@ -26,6 +26,7 @@ Step-by-step documentation explaining **how** to perform common tasks.
 | Document | Description |
 |----------|-------------|
 | [GETTING_STARTED_GUIDE.md](guides/GETTING_STARTED_GUIDE.md) | Clone, configure, and deploy the demo solution |
+| [LOCAL_DEVELOPMENT_GUIDE.md](guides/LOCAL_DEVELOPMENT_GUIDE.md) | .NET User Secrets and console app configuration |
 | [ENVIRONMENT_SETUP_GUIDE.md](guides/ENVIRONMENT_SETUP_GUIDE.md) | Power Platform environments, PAC CLI, service principals |
 | [BRANCH_PROTECTION_GUIDE.md](guides/BRANCH_PROTECTION_GUIDE.md) | Configure GitHub branch protection rules |
 | [PLUGIN_REMOVAL_GUIDE.md](guides/PLUGIN_REMOVAL_GUIDE.md) | Two-phase workflow for removing plugin steps |
