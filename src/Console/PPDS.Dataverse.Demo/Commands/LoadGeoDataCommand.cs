@@ -237,7 +237,7 @@ public static class LoadGeoDataCommand
             var progress = new Progress<ProgressSnapshot>(s =>
             {
                 Console.WriteLine($"    Progress: {s.Processed:N0}/{s.Total:N0} ({s.PercentComplete:F1}%) " +
-                    $"| {s.RatePerSecond:F0}/s | {s.Elapsed:mm\\:ss} elapsed | ETA: {s.EstimatedRemaining:mm\\:ss}");
+                    $"| {s.RatePerSecond:F0}/s | {s.Elapsed:mm\\:ss} elapsed | ETA: {FormatEta(s.EstimatedRemaining)}");
             });
 
             var result = await bulkExecutor.UpsertMultipleAsync("ppds_zipcode", entities, progress: progress);
@@ -266,6 +266,16 @@ public static class LoadGeoDataCommand
                 if (result.Errors.Count > 5)
                 {
                     Console.WriteLine($"      ... and {result.Errors.Count - 5} more errors");
+
+                    // Simple pattern detection: check if most errors have similar messages
+                    var firstErrorPrefix = result.Errors[0].Message.Split(':')[0];
+                    var similarCount = result.Errors.Count(e => e.Message.StartsWith(firstErrorPrefix));
+
+                    if (similarCount >= result.Errors.Count * 0.8)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"      (Pattern: {similarCount} of {result.Errors.Count} errors appear related)");
+                    }
                 }
                 Console.ResetColor();
             }
@@ -490,7 +500,7 @@ public static class LoadGeoDataCommand
         var progress = new Progress<ProgressSnapshot>(s =>
         {
             Console.WriteLine($"    Progress: {s.Processed:N0}/{s.Total:N0} ({s.PercentComplete:F1}%) " +
-                $"| {s.RatePerSecond:F0}/s | {s.Elapsed:mm\\:ss} elapsed | ETA: {s.EstimatedRemaining:mm\\:ss}");
+                $"| {s.RatePerSecond:F0}/s | {s.Elapsed:mm\\:ss} elapsed | ETA: {FormatEta(s.EstimatedRemaining)}");
         });
 
         var upsertResult = await bulkExecutor.UpsertMultipleAsync("ppds_city", cityEntities, progress: progress);
@@ -514,6 +524,16 @@ public static class LoadGeoDataCommand
             if (upsertResult.Errors.Count > 5)
             {
                 Console.WriteLine($"      ... and {upsertResult.Errors.Count - 5} more errors");
+
+                // Simple pattern detection: check if most errors have similar messages
+                var firstErrorPrefix = upsertResult.Errors[0].Message.Split(':')[0];
+                var similarCount = upsertResult.Errors.Count(e => e.Message.StartsWith(firstErrorPrefix));
+
+                if (similarCount >= upsertResult.Errors.Count * 0.8)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"      (Pattern: {similarCount} of {upsertResult.Errors.Count} errors appear related)");
+                }
             }
             Console.ResetColor();
         }
@@ -679,6 +699,18 @@ public static class LoadGeoDataCommand
         ["PR"] = "Puerto Rico", ["VI"] = "Virgin Islands", ["GU"] = "Guam",
         ["AS"] = "American Samoa", ["MP"] = "Northern Mariana Islands"
     };
+
+    /// <summary>
+    /// Formats a TimeSpan for ETA display, handling hour+ durations correctly.
+    /// </summary>
+    private static string FormatEta(TimeSpan eta)
+    {
+        if (eta.TotalHours >= 1)
+        {
+            return $"{(int)eta.TotalHours}:{eta.Minutes:D2}:{eta.Seconds:D2}";
+        }
+        return $"{(int)eta.TotalMinutes}:{eta.Seconds:D2}";
+    }
 
     private class StateRecord
     {
