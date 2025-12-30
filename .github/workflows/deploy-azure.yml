@@ -24,7 +24,7 @@ on:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  RESOURCE_GROUP: 'rg-ppdsdemo'
+  RESOURCE_GROUP: 'rg-ppds-demo'
 
 jobs:
   # =============================================================================
@@ -79,7 +79,7 @@ jobs:
     uses: joshsmithxrm/ppds-alm/github/workflows/deploy-azure-integration.yml@main
     with:
       environment: ${{ inputs.environment }}
-      resource-group: rg-ppdsdemo-${{ inputs.environment }}
+      resource-group: rg-ppds-demo-${{ inputs.environment }}
       app-name-prefix: ppds-demo
       service-bus-queues: '[{"name": "account-updates"}]'
     secrets:
