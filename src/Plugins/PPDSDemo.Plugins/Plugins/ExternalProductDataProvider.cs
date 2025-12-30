@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
@@ -26,6 +27,11 @@ namespace PPDSDemo.Plugins.Plugins
     /// </remarks>
     public class ExternalProductDataProvider : PluginBase
     {
+        // Static client cache to prevent socket exhaustion
+        // HttpClient is designed to be reused across requests
+        private static readonly ConcurrentDictionary<string, HttpClient> _httpClients =
+            new ConcurrentDictionary<string, HttpClient>();
+
         private readonly string _apiKey;
         private readonly string _apiBaseUrl;
 
@@ -88,9 +94,10 @@ namespace PPDSDemo.Plugins.Plugins
 
             context.Trace($"Retrieving product {target.Id}");
 
-            using (var client = CreateClient())
+            var client = GetHttpClient();
+            using (var request = CreateRequest(HttpMethod.Get, $"/api/products/{target.Id}"))
             {
-                var response = client.GetAsync($"/api/products/{target.Id}").Result;
+                var response = client.SendAsync(request).Result;
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -120,9 +127,10 @@ namespace PPDSDemo.Plugins.Plugins
             // TODO: Parse query for filter conditions
             // For now, retrieve all products
 
-            using (var client = CreateClient())
+            var client = GetHttpClient();
+            using (var request = CreateRequest(HttpMethod.Get, "/api/products"))
             {
-                var response = client.GetAsync("/api/products").Result;
+                var response = client.SendAsync(request).Result;
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -157,13 +165,14 @@ namespace PPDSDemo.Plugins.Plugins
             context.Trace("Creating product");
 
             var product = MapFromEntity(target);
+            var json = JsonSerializer.Serialize(product);
 
-            using (var client = CreateClient())
+            var client = GetHttpClient();
+            using (var request = CreateRequest(HttpMethod.Post, "/api/products"))
             {
-                var json = JsonSerializer.Serialize(product);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = client.PostAsync("/api/products", content).Result;
+                var response = client.SendAsync(request).Result;
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -193,13 +202,14 @@ namespace PPDSDemo.Plugins.Plugins
             context.Trace($"Updating product {target.Id}");
 
             var product = MapFromEntity(target);
+            var json = JsonSerializer.Serialize(product);
 
-            using (var client = CreateClient())
+            var client = GetHttpClient();
+            using (var request = CreateRequest(HttpMethod.Put, $"/api/products/{target.Id}"))
             {
-                var json = JsonSerializer.Serialize(product);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = client.PutAsync($"/api/products/{target.Id}", content).Result;
+                var response = client.SendAsync(request).Result;
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -226,9 +236,10 @@ namespace PPDSDemo.Plugins.Plugins
 
             context.Trace($"Deleting product {target.Id}");
 
-            using (var client = CreateClient())
+            var client = GetHttpClient();
+            using (var request = CreateRequest(HttpMethod.Delete, $"/api/products/{target.Id}"))
             {
-                var response = client.DeleteAsync($"/api/products/{target.Id}").Result;
+                var response = client.SendAsync(request).Result;
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -244,15 +255,24 @@ namespace PPDSDemo.Plugins.Plugins
             }
         }
 
-        private HttpClient CreateClient()
+        private HttpClient GetHttpClient()
         {
-            var client = new HttpClient
+            return _httpClients.GetOrAdd(_apiBaseUrl, url =>
             {
-                BaseAddress = new Uri(_apiBaseUrl),
-                Timeout = TimeSpan.FromSeconds(30)
-            };
-            client.DefaultRequestHeaders.Add("X-API-Key", _apiKey);
-            return client;
+                var client = new HttpClient
+                {
+                    BaseAddress = new Uri(url),
+                    Timeout = TimeSpan.FromSeconds(30)
+                };
+                return client;
+            });
+        }
+
+        private HttpRequestMessage CreateRequest(HttpMethod method, string requestUri)
+        {
+            var request = new HttpRequestMessage(method, requestUri);
+            request.Headers.Add("X-API-Key", _apiKey);
+            return request;
         }
 
         private Entity MapToEntity(ProductDto product)

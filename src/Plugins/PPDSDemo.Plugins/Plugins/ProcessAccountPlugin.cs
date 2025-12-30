@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -26,6 +27,11 @@ namespace PPDSDemo.Plugins.Plugins
         Mode = PluginMode.Synchronous)]
     public class ProcessAccountPlugin : PluginBase
     {
+        // Static client cache to prevent socket exhaustion
+        // HttpClient is designed to be reused across requests
+        private static readonly ConcurrentDictionary<string, HttpClient> _httpClients =
+            new ConcurrentDictionary<string, HttpClient>();
+
         private readonly string _apiKey;
         private readonly string _apiBaseUrl;
 
@@ -90,26 +96,40 @@ namespace PPDSDemo.Plugins.Plugins
             context.Trace($"API response: Success={result.Success}, Message={result.Message}");
         }
 
+        private HttpClient GetHttpClient()
+        {
+            return _httpClients.GetOrAdd(_apiBaseUrl, url =>
+            {
+                var client = new HttpClient
+                {
+                    BaseAddress = new Uri(url),
+                    Timeout = TimeSpan.FromSeconds(30)
+                };
+                return client;
+            });
+        }
+
         private ProcessAccountResponse CallWebApi(Guid accountId, string action, LocalPluginContext context)
         {
-            using (var client = new HttpClient())
+            var client = GetHttpClient();
+
+            var request = new ProcessAccountRequest
             {
-                client.BaseAddress = new Uri(_apiBaseUrl);
-                client.DefaultRequestHeaders.Add("X-API-Key", _apiKey);
-                client.Timeout = TimeSpan.FromSeconds(30);
+                AccountId = accountId,
+                Action = action
+            };
 
-                var request = new ProcessAccountRequest
-                {
-                    AccountId = accountId,
-                    Action = action
-                };
+            var json = JsonSerializer.Serialize(request);
 
-                var json = JsonSerializer.Serialize(request);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
+            // Create request message to set per-request headers (API key may vary by config)
+            using (var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/custom/process-account"))
+            {
+                requestMessage.Headers.Add("X-API-Key", _apiKey);
+                requestMessage.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 context.Trace($"Calling {_apiBaseUrl}/api/custom/process-account");
 
-                var response = client.PostAsync("/api/custom/process-account", content).Result;
+                var response = client.SendAsync(requestMessage).Result;
                 var responseBody = response.Content.ReadAsStringAsync().Result;
 
                 context.Trace($"Response: {response.StatusCode}");

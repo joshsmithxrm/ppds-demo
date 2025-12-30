@@ -64,7 +64,7 @@ public class WebhookTrigger
         {
             _logger.LogError(ex, "Error processing account-created webhook");
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-            await errorResponse.WriteAsJsonAsync(new { error = "Error processing webhook", details = ex.Message });
+            await errorResponse.WriteAsJsonAsync(new { error = "Error processing webhook" });
             return errorResponse;
         }
     }
@@ -105,7 +105,7 @@ public class WebhookTrigger
         {
             _logger.LogError(ex, "Error processing account-updated webhook");
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-            await errorResponse.WriteAsJsonAsync(new { error = "Error processing webhook", details = ex.Message });
+            await errorResponse.WriteAsJsonAsync(new { error = "Error processing webhook" });
             return errorResponse;
         }
     }
