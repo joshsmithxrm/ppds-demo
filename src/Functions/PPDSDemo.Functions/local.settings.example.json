@@ -4,6 +4,6 @@
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
     "WebApiBaseUrl": "https://localhost:5001",
-    "ServiceBusConnection": ""
+    "ServiceBusConnection": "<your-service-bus-connection-string>"
   }
 }

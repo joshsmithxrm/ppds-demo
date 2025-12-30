@@ -40,7 +40,7 @@ public class ServiceBusProcessor
             _logger.LogDebug("Message content: {Message}", message);
 
             // Forward to Web API
-            var content = new StringContent(message, Encoding.UTF8, "application/json");
+            using var content = new StringContent(message, Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync("/api/webhook/account-updated", content);
 
             var responseBody = await response.Content.ReadAsStringAsync();

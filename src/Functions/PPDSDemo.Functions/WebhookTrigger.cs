@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text;
-using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -28,45 +27,7 @@ public class WebhookTrigger
     public async Task<HttpResponseData> AccountCreated(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "webhook/account-created")] HttpRequestData req)
     {
-        _logger.LogInformation("Received account-created webhook");
-
-        try
-        {
-            // Read the request body (RemoteExecutionContext from Dataverse)
-            var body = await req.ReadAsStringAsync();
-
-            if (string.IsNullOrEmpty(body))
-            {
-                _logger.LogWarning("Received empty webhook body");
-                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
-                await badRequest.WriteAsJsonAsync(new { error = "Request body is required" });
-                return badRequest;
-            }
-
-            _logger.LogDebug("Webhook body: {Body}", body);
-
-            // Forward to Web API
-            var content = new StringContent(body, Encoding.UTF8, "application/json");
-            var apiResponse = await _httpClient.PostAsync("/api/webhook/account-created", content);
-
-            var responseBody = await apiResponse.Content.ReadAsStringAsync();
-
-            _logger.LogInformation("Web API response: {StatusCode} - {Body}",
-                apiResponse.StatusCode, responseBody);
-
-            // Return the API response
-            var response = req.CreateResponse(apiResponse.StatusCode);
-            response.Headers.Add("Content-Type", "application/json");
-            await response.WriteStringAsync(responseBody);
-            return response;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error processing account-created webhook");
-            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
-            await errorResponse.WriteAsJsonAsync(new { error = "Error processing webhook" });
-            return errorResponse;
-        }
+        return await ForwardWebhookAsync(req, "/api/webhook/account-created", "account-created");
     }
 
     /// <summary>
@@ -76,7 +37,18 @@ public class WebhookTrigger
     public async Task<HttpResponseData> AccountUpdated(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "webhook/account-updated")] HttpRequestData req)
     {
-        _logger.LogInformation("Received account-updated webhook");
+        return await ForwardWebhookAsync(req, "/api/webhook/account-updated", "account-updated");
+    }
+
+    /// <summary>
+    /// Forwards a webhook request to the Web API.
+    /// </summary>
+    private async Task<HttpResponseData> ForwardWebhookAsync(
+        HttpRequestData req,
+        string apiEndpoint,
+        string webhookType)
+    {
+        _logger.LogInformation("Received {WebhookType} webhook", webhookType);
 
         try
         {
@@ -84,18 +56,23 @@ public class WebhookTrigger
 
             if (string.IsNullOrEmpty(body))
             {
+                _logger.LogWarning("Received empty webhook body for {WebhookType}", webhookType);
                 var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
                 await badRequest.WriteAsJsonAsync(new { error = "Request body is required" });
                 return badRequest;
             }
 
-            var content = new StringContent(body, Encoding.UTF8, "application/json");
-            var apiResponse = await _httpClient.PostAsync("/api/webhook/account-updated", content);
+            _logger.LogDebug("Webhook body: {Body}", body);
 
+            // Forward to Web API
+            using var content = new StringContent(body, Encoding.UTF8, "application/json");
+            var apiResponse = await _httpClient.PostAsync(apiEndpoint, content);
             var responseBody = await apiResponse.Content.ReadAsStringAsync();
 
-            _logger.LogInformation("Web API response: {StatusCode}", apiResponse.StatusCode);
+            _logger.LogInformation("Web API response for {WebhookType}: {StatusCode}",
+                webhookType, apiResponse.StatusCode);
 
+            // Return the API response
             var response = req.CreateResponse(apiResponse.StatusCode);
             response.Headers.Add("Content-Type", "application/json");
             await response.WriteStringAsync(responseBody);
@@ -103,7 +80,7 @@ public class WebhookTrigger
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing account-updated webhook");
+            _logger.LogError(ex, "Error processing {WebhookType} webhook", webhookType);
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
             await errorResponse.WriteAsJsonAsync(new { error = "Error processing webhook" });
             return errorResponse;
