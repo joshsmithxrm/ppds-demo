@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PPDSDemo.Api.Models;
 using PPDSDemo.Api.Services;
@@ -8,6 +9,7 @@ namespace PPDSDemo.Api.Controllers;
 /// Handles Custom API calls from Dataverse plugins.
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/custom")]
 public class CustomApiController : ControllerBase
 {

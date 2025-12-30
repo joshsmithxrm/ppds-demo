@@ -76,7 +76,7 @@ jobs:
   deploy-infrastructure:
     name: Deploy Infrastructure
     if: ${{ inputs.deploy_infrastructure }}
-    uses: joshsmithxrm/ppds-alm/github/workflows/deploy-azure-integration.yml@main
+    uses: joshsmithxrm/ppds-alm/.github/workflows/deploy-azure-integration.yml@main
     with:
       environment: ${{ inputs.environment }}
       resource-group: rg-ppds-demo-${{ inputs.environment }}

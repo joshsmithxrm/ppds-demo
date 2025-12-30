@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PPDSDemo.Api.Models;
 using PPDSDemo.Api.Services;
@@ -8,6 +9,7 @@ namespace PPDSDemo.Api.Controllers;
 /// Handles webhook callbacks from Dataverse via Azure Functions.
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/webhook")]
 public class WebhookController : ControllerBase
 {
@@ -56,7 +58,7 @@ public class WebhookController : ControllerBase
         {
             _logger.LogError(ex, "Error processing account-created webhook for {AccountId}",
                 context.PrimaryEntityId);
-            return StatusCode(500, new { error = "Error processing webhook", details = ex.Message });
+            return StatusCode(500, new { error = "Error processing webhook" });
         }
     }
 
@@ -90,7 +92,7 @@ public class WebhookController : ControllerBase
         {
             _logger.LogError(ex, "Error processing account-updated webhook for {AccountId}",
                 context.PrimaryEntityId);
-            return StatusCode(500, new { error = "Error processing webhook", details = ex.Message });
+            return StatusCode(500, new { error = "Error processing webhook" });
         }
     }
 }

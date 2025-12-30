@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Crm.Sdk.Messages;
 using PPDS.Dataverse.Pooling;
@@ -10,6 +11,7 @@ namespace PPDSDemo.Api.Controllers;
 /// Diagnostic endpoints for health checks and pool testing.
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/diagnostics")]
 public class DiagnosticsController : ControllerBase
 {
@@ -25,6 +27,7 @@ public class DiagnosticsController : ControllerBase
     /// <summary>
     /// Health check endpoint.
     /// </summary>
+    [AllowAnonymous]
     [HttpGet("health")]
     public IActionResult Health()
     {
@@ -39,6 +42,13 @@ public class DiagnosticsController : ControllerBase
         [FromQuery] int operations = 100,
         [FromQuery] bool parallel = true)
     {
+        // Cap operations to prevent DoS abuse
+        const int maxOperations = 1000;
+        if (operations < 1 || operations > maxOperations)
+        {
+            return BadRequest(new { error = $"Operations must be between 1 and {maxOperations}" });
+        }
+
         _logger.LogInformation("Starting pool test: {Operations} operations, parallel={Parallel}", operations, parallel);
 
         var timings = new List<long>();
