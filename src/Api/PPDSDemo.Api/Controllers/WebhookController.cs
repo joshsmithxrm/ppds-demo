@@ -9,7 +9,7 @@ namespace PPDSDemo.Api.Controllers;
 /// Handles webhook callbacks from Dataverse via Azure Functions.
 /// </summary>
 [ApiController]
-[Authorize]
+[Authorize(Policy = "ApiAccess")]
 [Route("api/webhook")]
 public class WebhookController : ControllerBase
 {

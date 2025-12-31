@@ -11,7 +11,7 @@ namespace PPDSDemo.Api.Controllers;
 /// Diagnostic endpoints for health checks and pool testing.
 /// </summary>
 [ApiController]
-[Authorize]
+[Authorize(Policy = "ApiAccess")]
 [Route("api/diagnostics")]
 public class DiagnosticsController : ControllerBase
 {

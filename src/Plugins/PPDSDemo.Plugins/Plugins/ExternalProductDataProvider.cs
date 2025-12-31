@@ -151,6 +151,10 @@ namespace PPDSDemo.Plugins.Plugins
                 var collection = new EntityCollection { EntityName = EntityLogicalName };
                 foreach (var product in products ?? new List<ProductDto>())
                 {
+                    if (product == null)
+                    {
+                        continue;
+                    }
                     collection.Entities.Add(MapToEntity(product));
                 }
 
@@ -175,8 +179,9 @@ namespace PPDSDemo.Plugins.Plugins
 
             var client = GetHttpClient();
             using (var request = CreateRequest(HttpMethod.Post, "/api/products"))
+            using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
             {
-                request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+                request.Content = content;
 
                 var response = client.SendAsync(request).Result;
 
@@ -218,8 +223,9 @@ namespace PPDSDemo.Plugins.Plugins
 
             var client = GetHttpClient();
             using (var request = CreateRequest(HttpMethod.Put, $"/api/products/{target.Id}"))
+            using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
             {
-                request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+                request.Content = content;
 
                 var response = client.SendAsync(request).Result;
 

@@ -9,7 +9,7 @@ namespace PPDSDemo.Api.Controllers;
 /// Handles Custom API calls from Dataverse plugins.
 /// </summary>
 [ApiController]
-[Authorize]
+[Authorize(Policy = "ApiAccess")]
 [Route("api/custom")]
 public class CustomApiController : ControllerBase
 {

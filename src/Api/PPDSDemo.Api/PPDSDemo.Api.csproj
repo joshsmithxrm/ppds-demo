@@ -6,9 +6,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!--
+    Package versions pinned for reproducible builds.
+    Use Dependabot or Renovate for automated update PRs.
+    Last updated: 2025-12-30
+  -->
   <ItemGroup>
+    <!-- PPDS.Dataverse beta is intentional - developed alongside this demo -->
+    <PackageReference Include="Microsoft.Identity.Web" Version="4.2.0" />
     <PackageReference Include="PPDS.Dataverse" Version="1.0.0-beta.1" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.*" />
+    <!-- Swashbuckle 6.x is stable; 10.x is major breaking change -->
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
   </ItemGroup>
 
 </Project>

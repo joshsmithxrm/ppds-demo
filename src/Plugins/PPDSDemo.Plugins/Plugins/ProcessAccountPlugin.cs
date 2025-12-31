@@ -13,13 +13,46 @@ namespace PPDSDemo.Plugins.Plugins
     /// Calls Azure Web API to process the account based on the specified action.
     /// </summary>
     /// <remarks>
-    /// Registration:
-    /// - Message: ppds_ProcessAccount
-    /// - Stage: MainOperation (30)
-    /// - Mode: Synchronous
+    /// <para><strong>Registration:</strong></para>
+    /// <list type="bullet">
+    ///   <item>Message: ppds_ProcessAccount</item>
+    ///   <item>Stage: MainOperation (30)</item>
+    ///   <item>Mode: Synchronous</item>
+    /// </list>
     ///
-    /// Secure Configuration Format: "apiKey|baseUrl"
-    /// Example: "my-secret-key|https://api-ppds-demo.azurewebsites.net"
+    /// <para><strong>Secure Configuration Format:</strong> "apiKey|baseUrl"</para>
+    /// <para><strong>Example:</strong> "my-secret-key|https://api-ppds-demo.azurewebsites.net"</para>
+    ///
+    /// <para><strong>HttpClient Pattern:</strong></para>
+    /// <para>
+    /// This plugin demonstrates the correct pattern for HTTP calls from Dataverse plugins.
+    /// HttpClient instances are cached statically to prevent socket exhaustion - creating
+    /// an HttpClient per request causes TCP connections to linger in TIME_WAIT state,
+    /// exhausting available sockets under load.
+    /// </para>
+    ///
+    /// <para><strong>Why static is safe here:</strong></para>
+    /// <list type="bullet">
+    ///   <item>HttpClient is thread-safe for concurrent requests</item>
+    ///   <item>Plugin instance lifecycle is unpredictable; static guarantees reuse</item>
+    ///   <item>Sandbox worker processes recycle periodically, clearing static state</item>
+    ///   <item>Per-request headers (API key) are set on HttpRequestMessage, not the shared client</item>
+    /// </list>
+    ///
+    /// <para><strong>DNS caching tradeoff:</strong></para>
+    /// <para>
+    /// HttpClient caches DNS indefinitely. If the API endpoint IP changes, the cached client
+    /// won't pick it up until sandbox recycling. This is acceptable because sandbox workers
+    /// recycle periodically (minutes to hours), and .NET Framework 4.6.2 (plugin target)
+    /// lacks SocketsHttpHandler for fine-grained connection lifetime control.
+    /// </para>
+    ///
+    /// <para><strong>Synchronous execution:</strong></para>
+    /// <para>
+    /// Plugins must be synchronous. Using .Result on async methods is safe here because
+    /// the Dataverse sandbox has no SynchronizationContext - the deadlock scenarios that
+    /// affect ASP.NET or UI contexts do not apply.
+    /// </para>
     /// </remarks>
     [PluginStep(
         Message = "ppds_ProcessAccount",
@@ -27,8 +60,20 @@ namespace PPDSDemo.Plugins.Plugins
         Mode = PluginMode.Synchronous)]
     public class ProcessAccountPlugin : PluginBase
     {
-        // Static client cache to prevent socket exhaustion
-        // HttpClient is designed to be reused across requests
+        /// <summary>
+        /// Static cache of HttpClient instances keyed by base URL.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This pattern prevents socket exhaustion while supporting multiple plugin registrations
+        /// with different secure configurations (different API endpoints). Each unique base URL
+        /// gets its own HttpClient instance, shared across all executions targeting that endpoint.
+        /// </para>
+        /// <para>
+        /// Do NOT use instance fields for HttpClient - plugin instance pooling is unpredictable,
+        /// and constructors run during registration discovery, not just execution.
+        /// </para>
+        /// </remarks>
         private static readonly ConcurrentDictionary<string, HttpClient> _httpClients =
             new ConcurrentDictionary<string, HttpClient>();
 
@@ -96,6 +141,14 @@ namespace PPDSDemo.Plugins.Plugins
             context.Trace($"API response: Success={result.Success}, Message={result.Message}");
         }
 
+        /// <summary>
+        /// Gets or creates a cached HttpClient for the configured base URL.
+        /// </summary>
+        /// <returns>A shared HttpClient instance for the API endpoint.</returns>
+        /// <remarks>
+        /// The 30-second timeout is well under the 2-minute plugin execution limit,
+        /// leaving time for retry logic or graceful error handling if needed.
+        /// </remarks>
         private HttpClient GetHttpClient()
         {
             return _httpClients.GetOrAdd(_apiBaseUrl, url =>
@@ -123,12 +176,14 @@ namespace PPDSDemo.Plugins.Plugins
 
             // Create request message to set per-request headers (API key may vary by config)
             using (var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/custom/process-account"))
+            using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
             {
                 requestMessage.Headers.Add("X-API-Key", _apiKey);
-                requestMessage.Content = new StringContent(json, Encoding.UTF8, "application/json");
+                requestMessage.Content = content;
 
                 context.Trace($"Calling {_apiBaseUrl}/api/custom/process-account");
 
+                // Plugins must be synchronous - .Result is safe here (no SynchronizationContext in sandbox)
                 var response = client.SendAsync(requestMessage).Result;
                 var responseBody = response.Content.ReadAsStringAsync().Result;
 

@@ -65,6 +65,7 @@ public class AccountService : IAccountService
                 new Microsoft.Xrm.Sdk.Query.ColumnSet("name", "telephone1", "emailaddress1", "ppds_lastazuresync"));
 
             var accountName = account.GetAttributeValue<string>("name") ?? "Unknown";
+            _logger.LogInformation("Retrieved account '{AccountName}' for processing", accountName);
 
             switch (request.Action.ToLowerInvariant())
             {
@@ -112,7 +113,7 @@ public class AccountService : IAccountService
 
         if (string.IsNullOrWhiteSpace(email))
             issues.Add("Email address is missing");
-        else if (!email.Contains('@'))
+        else if (!IsValidEmail(email))
             issues.Add("Email address format is invalid");
 
         if (issues.Count > 0)
@@ -171,5 +172,21 @@ public class AccountService : IAccountService
             Success = true,
             Message = $"Account '{accountName}' synchronized at {DateTime.UtcNow:O}."
         };
+    }
+
+    /// <summary>
+    /// Validates email address format using .NET's MailAddress parser.
+    /// </summary>
+    private static bool IsValidEmail(string email)
+    {
+        try
+        {
+            var addr = new System.Net.Mail.MailAddress(email);
+            return addr.Address == email;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 }

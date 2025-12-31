@@ -10,7 +10,7 @@ namespace PPDSDemo.Api.Controllers;
 /// Used by the Virtual Table data provider plugin.
 /// </summary>
 [ApiController]
-[Authorize]
+[Authorize(Policy = "ApiAccess")]
 [Route("api/products")]
 public class ProductsController : ControllerBase
 {
