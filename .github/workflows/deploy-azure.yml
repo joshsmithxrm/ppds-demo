@@ -75,9 +75,7 @@ jobs:
   deploy-infrastructure:
     name: Deploy Infrastructure
     if: ${{ inputs.deploy_infrastructure }}
-    # Note: ALM stores reusable workflows in github/workflows/ (not .github/workflows/)
-    # The .github/workflows/ directory contains only ALM's internal CI workflow
-    uses: joshsmithxrm/ppds-alm/github/workflows/deploy-azure-integration.yml@v1
+    uses: joshsmithxrm/ppds-alm/.github/workflows/azure-deploy.yml@v1
     with:
       environment: ${{ inputs.environment }}
       resource-group: rg-ppds-demo-${{ inputs.environment }}
