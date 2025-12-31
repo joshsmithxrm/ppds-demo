@@ -1,0 +1,15 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "WebApiBaseUrl": "https://localhost:5001",
+    "WebApiAudience": "",
+    "ServiceBusConnection": "<SERVICE_BUS_CONNECTION_STRING>"
+  },
+  "_comments": {
+    "WebApiBaseUrl": "URL of the Web API to forward webhooks to",
+    "WebApiAudience": "Azure AD audience for managed identity auth (e.g., api://ppds-demo-api). Leave empty for local dev without Azure AD.",
+    "ServiceBusConnection": "Service Bus connection string for async webhook processing"
+  }
+}

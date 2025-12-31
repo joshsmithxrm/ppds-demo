@@ -1,0 +1,152 @@
+name: Deploy Azure Resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - qa
+          - prod
+      deploy_infrastructure:
+        description: 'Deploy infrastructure (Bicep)'
+        required: false
+        type: boolean
+        default: false
+      deploy_applications:
+        description: 'Deploy applications'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  # =============================================================================
+  # Build Applications
+  # =============================================================================
+  build:
+    name: Build Applications
+    runs-on: ubuntu-latest
+    if: ${{ inputs.deploy_applications }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build Web API
+        run: dotnet build src/Api/PPDSDemo.Api/PPDSDemo.Api.csproj -c Release --no-restore
+
+      - name: Publish Web API
+        run: dotnet publish src/Api/PPDSDemo.Api/PPDSDemo.Api.csproj -c Release -o ${{ github.workspace }}/publish/api --no-build
+
+      - name: Build Functions
+        run: dotnet build src/Functions/PPDSDemo.Functions/PPDSDemo.Functions.csproj -c Release --no-restore
+
+      - name: Publish Functions
+        run: dotnet publish src/Functions/PPDSDemo.Functions/PPDSDemo.Functions.csproj -c Release -o ${{ github.workspace }}/publish/functions --no-build
+
+      - name: Upload Web API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api
+          path: ${{ github.workspace }}/publish/api
+
+      - name: Upload Functions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions
+          path: ${{ github.workspace }}/publish/functions
+
+  # =============================================================================
+  # Deploy Infrastructure (using ppds-alm reusable workflow)
+  # =============================================================================
+  deploy-infrastructure:
+    name: Deploy Infrastructure
+    if: ${{ inputs.deploy_infrastructure }}
+    uses: joshsmithxrm/ppds-alm/.github/workflows/deploy-azure-integration.yml@main
+    with:
+      environment: ${{ inputs.environment }}
+      resource-group: rg-ppds-demo-${{ inputs.environment }}
+      app-name-prefix: ppds-demo
+      service-bus-queues: '[{"name": "account-updates"}]'
+    secrets:
+      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  # =============================================================================
+  # Deploy Applications
+  # =============================================================================
+  deploy-applications:
+    name: Deploy Applications
+    runs-on: ubuntu-latest
+    needs: [build, deploy-infrastructure]
+    if: ${{ always() && inputs.deploy_applications && needs.build.result == 'success' && (needs.deploy-infrastructure.result == 'success' || needs.deploy-infrastructure.result == 'skipped') }}
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download Web API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api
+          path: ${{ github.workspace }}/publish/api
+
+      - name: Download Functions artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: functions
+          path: ${{ github.workspace }}/publish/functions
+
+      - name: Set App Names
+        id: get-names
+        run: |
+          # Use deterministic naming based on CAF convention
+          # No discovery needed - names are predictable from inputs
+          WEB_APP="app-ppds-demo-${{ inputs.environment }}-001"
+          FUNC_APP="func-ppds-demo-${{ inputs.environment }}-001"
+          echo "webAppName=$WEB_APP" >> $GITHUB_OUTPUT
+          echo "functionAppName=$FUNC_APP" >> $GITHUB_OUTPUT
+          echo "Web App: $WEB_APP"
+          echo "Function App: $FUNC_APP"
+
+      - name: Deploy Web API
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ steps.get-names.outputs.webAppName }}
+          package: ${{ github.workspace }}/publish/api
+
+      - name: Deploy Functions
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ steps.get-names.outputs.functionAppName }}
+          package: ${{ github.workspace }}/publish/functions
+
+      - name: Deployment Summary
+        run: |
+          echo "## Application Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Application | Name |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Web API | \`${{ steps.get-names.outputs.webAppName }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Functions | \`${{ steps.get-names.outputs.functionAppName }}\` |" >> $GITHUB_STEP_SUMMARY

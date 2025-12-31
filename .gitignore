@@ -24,6 +24,10 @@
 **/appsettings.Development.json
 **/appsettings.Local.json
 
+# Azure Functions local settings (contains connection strings)
+**/local.settings.json
+!**/local.settings.example.json
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
