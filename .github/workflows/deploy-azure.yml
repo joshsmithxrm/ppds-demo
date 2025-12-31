@@ -75,13 +75,16 @@ jobs:
   deploy-infrastructure:
     name: Deploy Infrastructure
     if: ${{ inputs.deploy_infrastructure }}
-    uses: joshsmithxrm/ppds-alm/.github/workflows/deploy-azure-integration.yml@main
+    # Note: ALM stores reusable workflows in github/workflows/ (not .github/workflows/)
+    # The .github/workflows/ directory contains only ALM's internal CI workflow
+    uses: joshsmithxrm/ppds-alm/github/workflows/deploy-azure-integration.yml@v1
     with:
       environment: ${{ inputs.environment }}
       resource-group: rg-ppds-demo-${{ inputs.environment }}
       app-name-prefix: ppds-demo
       service-bus-queues: '[{"name": "account-updates"}]'
-    secrets:
+      # Azure OIDC credentials are inputs (identifiers), not secrets (credentials)
+      # OIDC authentication uses GitHub's token - no client secret needed
       azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
       azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
       azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
