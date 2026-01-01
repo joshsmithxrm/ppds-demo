@@ -8,6 +8,9 @@
     "appNamePrefix": {
       "value": "ppds-demo"
     },
+    "appServicePlanSku": {
+      "value": "F1"
+    },
     "serviceBusQueues": {
       "value": [
         { "name": "account-updates" }
