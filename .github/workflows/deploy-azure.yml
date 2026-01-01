@@ -68,6 +68,7 @@ jobs:
         with:
           name: functions
           path: ${{ github.workspace }}/publish/functions
+          include-hidden-files: true  # Required for .azurefunctions folder on Linux
 
   # =============================================================================
   # Deploy Infrastructure (using ppds-alm reusable workflow)
