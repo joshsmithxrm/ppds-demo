@@ -93,13 +93,9 @@ try {
             continue
         }
 
-        $cmd = "ppds plugins deploy -c `"$($plugin.Config)`""
-        if ($commonArgs.Count -gt 0) {
-            $cmd += " " + ($commonArgs -join " ")
-        }
-
-        Write-Host "  $cmd" -ForegroundColor DarkGray
-        Invoke-Expression $cmd
+        $deployArgs = @("plugins", "deploy", "-c", $plugin.Config) + $commonArgs
+        Write-Host "  ppds $($deployArgs -join ' ')" -ForegroundColor DarkGray
+        & ppds @deployArgs
 
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  Completed successfully" -ForegroundColor Green

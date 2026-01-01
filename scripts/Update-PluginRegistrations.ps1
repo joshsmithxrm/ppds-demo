@@ -84,9 +84,9 @@ try {
                 continue
             }
 
-            $cmd = "ppds plugins extract -i `"$($plugin.Input)`" -o `"$($plugin.Output)`" -s $($plugin.Solution)"
-            Write-Host "  $cmd" -ForegroundColor DarkGray
-            Invoke-Expression $cmd
+            $extractArgs = @("plugins", "extract", "-i", $plugin.Input, "-o", $plugin.Output, "-s", $plugin.Solution)
+            Write-Host "  ppds $($extractArgs -join ' ')" -ForegroundColor DarkGray
+            & ppds @extractArgs
 
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "  Extracted to $($plugin.Output)" -ForegroundColor Green
@@ -109,9 +109,13 @@ try {
                 continue
             }
 
-            $cmd = "ppds plugins diff -c `"$($plugin.Output)`""
-            Write-Host "  $cmd" -ForegroundColor DarkGray
-            Invoke-Expression $cmd
+            $diffArgs = @("plugins", "diff", "-c", $plugin.Output)
+            Write-Host "  ppds $($diffArgs -join ' ')" -ForegroundColor DarkGray
+            & ppds @diffArgs
+
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "  Diff failed for $($plugin.Name)"
+            }
         }
     }
 
