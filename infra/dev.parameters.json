@@ -8,6 +8,9 @@
     "appNamePrefix": {
       "value": "ppds-demo"
     },
+    "location": {
+      "value": "centralus"
+    },
     "appServicePlanSku": {
       "value": "F1"
     },
