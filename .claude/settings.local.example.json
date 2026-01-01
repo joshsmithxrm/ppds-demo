@@ -85,6 +85,7 @@
       "Bash(gh pr diff:*)",
       "Bash(gh api repos/*/pulls/*/comments:*)",
       "Bash(gh api repos/*/pulls/*/comments/*:*)",
+      "Bash(gh api repos/*/pulls/*/comments/*/replies:*)",
       "Bash(gh issue list:*)",
       "Bash(gh issue view:*)",
       "Bash(gh issue status:*)",
