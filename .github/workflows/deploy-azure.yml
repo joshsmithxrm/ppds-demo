@@ -75,6 +75,9 @@ jobs:
   deploy-infrastructure:
     name: Deploy Infrastructure
     if: ${{ inputs.deploy_infrastructure }}
+    permissions:
+      id-token: write
+      contents: read
     uses: joshsmithxrm/ppds-alm/.github/workflows/azure-deploy.yml@v1
     with:
       environment: ${{ inputs.environment }}
@@ -96,6 +99,10 @@ jobs:
     needs: [build, deploy-infrastructure]
     if: ${{ always() && inputs.deploy_applications && needs.build.result == 'success' && (needs.deploy-infrastructure.result == 'success' || needs.deploy-infrastructure.result == 'skipped') }}
     environment: ${{ inputs.environment }}
+
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
