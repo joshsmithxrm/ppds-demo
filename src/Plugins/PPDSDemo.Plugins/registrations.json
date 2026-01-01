@@ -1,26 +1,29 @@
 {
-  "$schema": "../../../tools/schemas/plugin-registration.schema.json",
+  "$schema": "https://raw.githubusercontent.com/joshsmithxrm/ppds-sdk/main/schemas/plugin-registration.schema.json",
   "version": "1.0",
-  "generatedAt": "2025-12-14T01:39:13Z",
+  "generatedAt": "2026-01-01T20:00:41Z",
   "assemblies": [
     {
       "name": "PPDSDemo.Plugins",
       "type": "Assembly",
+      "path": "bin/Debug/net462/PPDSDemo.Plugins.dll",
       "solution": "PPDSDemo",
-      "path": "./src/Plugins/PPDSDemo.Plugins/bin/Release/net462/PPDSDemo.Plugins.dll",
-      "plugins": [
+      "allTypeNames": [
+        "PPDSDemo.Plugins.Plugins.AccountPreCreatePlugin",
+        "PPDSDemo.Plugins.Plugins.ContactPostUpdatePlugin",
+        "PPDSDemo.Plugins.Plugins.ProcessAccountPlugin"
+      ],
+      "types": [
         {
           "typeName": "PPDSDemo.Plugins.Plugins.AccountPreCreatePlugin",
           "steps": [
             {
-              "name": "PPDSDemo.Plugins.Plugins.AccountPreCreatePlugin: Create of account",
+              "name": "AccountPreCreatePlugin: Create of account",
               "message": "Create",
               "entity": "account",
               "stage": "PreOperation",
               "mode": "Synchronous",
               "executionOrder": 1,
-              "filteringAttributes": null,
-              "configuration": null,
               "images": []
             }
           ]
@@ -29,14 +32,13 @@
           "typeName": "PPDSDemo.Plugins.Plugins.ContactPostUpdatePlugin",
           "steps": [
             {
-              "name": "PPDSDemo.Plugins.Plugins.ContactPostUpdatePlugin: Update of contact",
+              "name": "ContactPostUpdatePlugin: Update of contact",
               "message": "Update",
               "entity": "contact",
               "stage": "PostOperation",
               "mode": "Asynchronous",
               "executionOrder": 1,
               "filteringAttributes": "emailaddress1,jobtitle,telephone1",
-              "configuration": null,
               "images": [
                 {
                   "name": "PreImage",
@@ -47,12 +49,21 @@
               ]
             }
           ]
+        },
+        {
+          "typeName": "PPDSDemo.Plugins.Plugins.ProcessAccountPlugin",
+          "steps": [
+            {
+              "name": "ProcessAccountPlugin: ppds_ProcessAccount of ",
+              "message": "ppds_ProcessAccount",
+              "entity": "",
+              "stage": "MainOperation",
+              "mode": "Synchronous",
+              "executionOrder": 1,
+              "images": []
+            }
+          ]
         }
-      ],
-      "allTypeNames": [
-        "PPDSDemo.Plugins.WorkflowActivities.SendNotificationActivity",
-        "PPDSDemo.Plugins.Plugins.AccountPreCreatePlugin",
-        "PPDSDemo.Plugins.Plugins.ContactPostUpdatePlugin"
       ]
     }
   ]

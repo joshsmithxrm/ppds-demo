@@ -1,26 +1,28 @@
 {
-  "$schema": "../../../tools/schemas/plugin-registration.schema.json",
+  "$schema": "https://raw.githubusercontent.com/joshsmithxrm/ppds-sdk/main/schemas/plugin-registration.schema.json",
   "version": "1.0",
-  "generatedAt": "2025-12-13T19:08:48Z",
+  "generatedAt": "2026-01-01T20:00:41Z",
   "assemblies": [
     {
       "name": "PPDSDemo.PluginPackage",
       "type": "Nuget",
+      "packagePath": "bin/Debug/ppds_PPDSDemo.PluginPackage.1.0.0.nupkg",
       "solution": "PPDSDemo",
-      "path": "./src/PluginPackages/PPDSDemo.PluginPackage/bin/Release/net462/PPDSDemo.PluginPackage.dll",
-      "plugins": [
+      "allTypeNames": [
+        "PPDSDemo.PluginPackage.AccountAuditLogPlugin"
+      ],
+      "types": [
         {
           "typeName": "PPDSDemo.PluginPackage.AccountAuditLogPlugin",
           "steps": [
             {
-              "name": "PPDSDemo.PluginPackage.AccountAuditLogPlugin: Update of account",
+              "name": "AccountAuditLogPlugin: Update of account",
               "message": "Update",
               "entity": "account",
               "stage": "PostOperation",
               "mode": "Asynchronous",
               "executionOrder": 1,
               "filteringAttributes": "name,telephone1,revenue",
-              "configuration": null,
               "images": [
                 {
                   "name": "PreImage",
@@ -32,8 +34,7 @@
             }
           ]
         }
-      ],
-      "packagePath": "./src/PluginPackages/PPDSDemo.PluginPackage/bin/Release/ppds_PPDSDemo.PluginPackage.1.0.0.nupkg"
+      ]
     }
   ]
 }
