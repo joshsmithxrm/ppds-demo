@@ -1,0 +1,144 @@
+# =============================================================================
+# Azure AD Setup - One-Time Per Environment
+# =============================================================================
+# This workflow creates the Azure AD App Registration required for Managed
+# Identity authentication between the Function App and Web API.
+#
+# Run this ONCE per environment (dev, qa, prod) before deploying applications.
+# The created Client ID is stored in GitHub Variables for use by deploy-azure.yml.
+#
+# Prerequisites:
+#   - Azure CLI with permissions to create App Registrations
+#   - GitHub CLI with permissions to set repository variables
+#
+# What this creates:
+#   - Azure AD App Registration for the Web API
+#   - Stores AZURE_WEBAPI_CLIENT_ID_{ENV} in GitHub Variables
+#
+# =============================================================================
+
+name: Setup Azure AD (One-Time)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - qa
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  setup-azure-ad:
+    name: Setup Azure AD App Registration
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create or Update App Registration
+        id: app-registration
+        run: |
+          ENV="${{ inputs.environment }}"
+          APP_NAME="ppds-demo-api-${ENV}"
+          IDENTIFIER_URI="api://ppds-demo-api-${ENV}"
+
+          echo "## Azure AD App Registration Setup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check if app registration already exists
+          EXISTING_APP=$(az ad app list --display-name "$APP_NAME" --query "[0].appId" -o tsv 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING_APP" ] && [ "$EXISTING_APP" != "None" ]; then
+            echo "App Registration '$APP_NAME' already exists with Client ID: $EXISTING_APP"
+            echo "client_id=$EXISTING_APP" >> $GITHUB_OUTPUT
+            echo "created=false" >> $GITHUB_OUTPUT
+            echo "| Status | Already exists |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Creating new App Registration: $APP_NAME"
+
+            # Create the app registration
+            APP_ID=$(az ad app create \
+              --display-name "$APP_NAME" \
+              --identifier-uris "$IDENTIFIER_URI" \
+              --sign-in-audience "AzureADMyOrg" \
+              --query "appId" -o tsv)
+
+            echo "Created App Registration with Client ID: $APP_ID"
+            echo "client_id=$APP_ID" >> $GITHUB_OUTPUT
+            echo "created=true" >> $GITHUB_OUTPUT
+            echo "| Status | Created new |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "| App Name | \`$APP_NAME\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Identifier URI | \`$IDENTIFIER_URI\` |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Store Client ID in GitHub Variables
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ENV="${{ inputs.environment }}"
+          ENV_UPPER=$(echo "$ENV" | tr '[:lower:]' '[:upper:]')
+          VAR_NAME="AZURE_WEBAPI_CLIENT_ID_${ENV_UPPER}"
+          CLIENT_ID="${{ steps.app-registration.outputs.client_id }}"
+
+          echo "Setting GitHub Variable: $VAR_NAME = $CLIENT_ID"
+
+          # Note: This requires the workflow to have permissions to set variables
+          # If this fails, manually set the variable in GitHub Settings
+          gh variable set "$VAR_NAME" --body "$CLIENT_ID" || {
+            echo "::warning::Could not automatically set GitHub Variable. Please manually set:"
+            echo "::warning::  Variable: $VAR_NAME"
+            echo "::warning::  Value: $CLIENT_ID"
+            echo ""
+            echo "## Manual Step Required" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Set this GitHub Variable in repository settings:" >> $GITHUB_STEP_SUMMARY
+            echo "- **Name:** \`$VAR_NAME\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Value:** \`$CLIENT_ID\`" >> $GITHUB_STEP_SUMMARY
+          }
+
+          # Also output the audience URI for the Function App
+          AUDIENCE_URI="api://ppds-demo-api-${ENV}"
+          AUDIENCE_VAR="AZURE_WEBAPI_AUDIENCE_${ENV_UPPER}"
+
+          gh variable set "$AUDIENCE_VAR" --body "$AUDIENCE_URI" || {
+            echo "::warning::Could not automatically set GitHub Variable. Please manually set:"
+            echo "::warning::  Variable: $AUDIENCE_VAR"
+            echo "::warning::  Value: $AUDIENCE_URI"
+            echo ""
+            echo "- **Name:** \`$AUDIENCE_VAR\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Value:** \`$AUDIENCE_URI\`" >> $GITHUB_STEP_SUMMARY
+          }
+
+      - name: Summary
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. Run the **Deploy Azure Resources** workflow with \`deploy_applications: true\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. The Web API will be configured with \`AzureAd:ClientId\` and \`AzureAd:TenantId\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. The Function App will be configured with \`WebApiAudience\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Configuration Values" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Client ID | \`${{ steps.app-registration.outputs.client_id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tenant ID | \`${{ vars.AZURE_TENANT_ID }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Audience URI | \`api://ppds-demo-api-${{ inputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY

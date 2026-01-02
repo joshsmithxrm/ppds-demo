@@ -151,6 +151,78 @@ jobs:
           app-name: ${{ steps.get-names.outputs.functionAppName }}
           package: ${{ github.workspace }}/publish/functions
 
+      # =========================================================================
+      # Configure Managed Identity Authentication (Function -> Web API)
+      # =========================================================================
+      # These settings enable the Function App to authenticate to the Web API
+      # using Managed Identity. The App Registration must be created first by
+      # running the "Setup Azure AD (One-Time)" workflow.
+      # =========================================================================
+
+      - name: Get Azure AD Configuration
+        id: azure-ad-config
+        run: |
+          ENV="${{ inputs.environment }}"
+          ENV_UPPER=$(echo "$ENV" | tr '[:lower:]' '[:upper:]')
+
+          # Get environment-specific variables
+          # These are set by the setup-azure-ad.yml workflow
+          CLIENT_ID_VAR="AZURE_WEBAPI_CLIENT_ID_${ENV_UPPER}"
+          AUDIENCE_VAR="AZURE_WEBAPI_AUDIENCE_${ENV_UPPER}"
+
+          # Read from GitHub Variables (passed via vars context)
+          case "$ENV" in
+            dev)
+              CLIENT_ID="${{ vars.AZURE_WEBAPI_CLIENT_ID_DEV }}"
+              AUDIENCE="${{ vars.AZURE_WEBAPI_AUDIENCE_DEV }}"
+              ;;
+            qa)
+              CLIENT_ID="${{ vars.AZURE_WEBAPI_CLIENT_ID_QA }}"
+              AUDIENCE="${{ vars.AZURE_WEBAPI_AUDIENCE_QA }}"
+              ;;
+            prod)
+              CLIENT_ID="${{ vars.AZURE_WEBAPI_CLIENT_ID_PROD }}"
+              AUDIENCE="${{ vars.AZURE_WEBAPI_AUDIENCE_PROD }}"
+              ;;
+          esac
+
+          if [ -z "$CLIENT_ID" ]; then
+            echo "::warning::Azure AD not configured for $ENV environment. Run 'Setup Azure AD (One-Time)' workflow first."
+            echo "configured=false" >> $GITHUB_OUTPUT
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+            echo "client_id=$CLIENT_ID" >> $GITHUB_OUTPUT
+            echo "audience=$AUDIENCE" >> $GITHUB_OUTPUT
+            echo "Azure AD configured: Client ID = $CLIENT_ID"
+          fi
+
+      - name: Configure Web API Authentication
+        if: steps.azure-ad-config.outputs.configured == 'true'
+        run: |
+          echo "Configuring Web API with Azure AD settings..."
+          az webapp config appsettings set \
+            --name ${{ steps.get-names.outputs.webAppName }} \
+            --resource-group rg-ppds-demo-${{ inputs.environment }} \
+            --settings \
+              "AzureAd__ClientId=${{ steps.azure-ad-config.outputs.client_id }}" \
+              "AzureAd__TenantId=${{ vars.AZURE_TENANT_ID }}" \
+            --output none
+
+          echo "Web API configured with Azure AD authentication"
+
+      - name: Configure Function App Authentication
+        if: steps.azure-ad-config.outputs.configured == 'true'
+        run: |
+          echo "Configuring Function App with Web API audience..."
+          az functionapp config appsettings set \
+            --name ${{ steps.get-names.outputs.functionAppName }} \
+            --resource-group rg-ppds-demo-${{ inputs.environment }} \
+            --settings \
+              "WebApiAudience=${{ steps.azure-ad-config.outputs.audience }}" \
+            --output none
+
+          echo "Function App configured with Web API audience"
+
       - name: Deployment Summary
         run: |
           echo "## Application Deployment Summary" >> $GITHUB_STEP_SUMMARY
@@ -159,3 +231,15 @@ jobs:
           echo "|-------------|------|" >> $GITHUB_STEP_SUMMARY
           echo "| Web API | \`${{ steps.get-names.outputs.webAppName }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Functions | \`${{ steps.get-names.outputs.functionAppName }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Managed Identity Authentication" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.azure-ad-config.outputs.configured }}" == "true" ]; then
+            echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Status | :white_check_mark: Configured |" >> $GITHUB_STEP_SUMMARY
+            echo "| Web API Client ID | \`${{ steps.azure-ad-config.outputs.client_id }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Function Audience | \`${{ steps.azure-ad-config.outputs.audience }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo ":warning: **Not configured** - Run the 'Setup Azure AD (One-Time)' workflow first." >> $GITHUB_STEP_SUMMARY
+          fi
