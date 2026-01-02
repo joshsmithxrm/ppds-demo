@@ -12,9 +12,14 @@ if (-not (Test-Path $tmpDir)) {
     New-Item -ItemType Directory -Path $tmpDir | Out-Null
 }
 
+# Start logging
+$logFile = Join-Path $tmpDir "ppds-test-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+Start-Transcript -Path $logFile
+
 Push-Location $tmpDir
 try {
     Write-Host "=== PPDS CLI Data Migration Test ===" -ForegroundColor Cyan
+    Write-Host "Log file: $logFile" -ForegroundColor DarkGray
     Write-Host "Working directory: $tmpDir" -ForegroundColor DarkGray
     Write-Host ""
 
@@ -46,4 +51,5 @@ try {
 }
 finally {
     Pop-Location
+    Stop-Transcript
 }
