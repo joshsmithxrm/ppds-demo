@@ -63,7 +63,6 @@
       "Bash(dotnet clean:*)",
       "Bash(dotnet run:*)",
       "Bash(dotnet sln:*)",
-      "Bash(pac:*)",
       "Bash(pac solution export:*)",
       "Bash(pac solution import:*)",
       "Bash(pac solution unpack:*)",
