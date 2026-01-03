@@ -8,7 +8,7 @@
     <Descriptions>
       <Description description="Demo solution showcasing the Power Platform Developer Suite VS Code extension" languagecode="1033" />
     </Descriptions>
-    <Version>1.0.20251231.40</Version>
+    <Version>1.0.20260102.42</Version>
     <Managed>2</Managed>
     <Publisher>
       <UniqueName>PPDSDemoPublisher</UniqueName>
@@ -88,10 +88,11 @@
       <RootComponent type="1" schemaName="ppds_zipcode" behavior="0" />
       <RootComponent type="61" schemaName="ppds_/scripts/account.form.js" behavior="0" />
       <RootComponent type="9" schemaName="ppds_status" behavior="0" />
-      <RootComponent type="91" id="{50da79c7-46da-f011-8543-000d3a3b9cba}" schemaName="PPDSDemo.PluginPackage, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" behavior="0" />
       <RootComponent type="91" id="{24a62556-43da-f011-8543-000d3a3b9cba}" schemaName="PPDSDemo.Plugins, Version=1.0.0.0, Culture=neutral, PublicKeyToken=87a4b0dac59374c6" behavior="0" />
-      <RootComponent type="95" id="{6d37edfa-79dc-f011-8543-000d3a3b9cba}" behavior="0" />
-      <RootComponent type="95" id="{b5dac77c-79dc-f011-8543-000d3a3b9cba}" behavior="0" />
+      <RootComponent type="92" id="{512bbf44-c0e5-f011-8543-000d3a3b9cba}" behavior="0" />
+      <RootComponent type="92" id="{c3bea5fe-ebe5-f011-8543-000d3a3b9cba}" behavior="0" />
+      <RootComponent type="92" id="{c5bea5fe-ebe5-f011-8543-000d3a3b9cba}" behavior="0" />
+      <RootComponent type="95" id="{2c6fc8b8-53e7-f011-8543-000d3a3b9cba}" behavior="0" />
     </RootComponents>
     <MissingDependencies />
   </SolutionManifest>

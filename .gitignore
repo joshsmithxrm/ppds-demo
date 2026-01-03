@@ -467,3 +467,6 @@ verification-report.json
 scratchpad/*.csproj
 scratchpad/obj/
 scratchpad/bin/
+
+# Temp folder for script testing
+tmp/

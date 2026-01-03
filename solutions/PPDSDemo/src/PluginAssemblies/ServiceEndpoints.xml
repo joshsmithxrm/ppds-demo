@@ -1,23 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <ServiceEndpoints xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <ServiceEndpoint ServiceEndpointId="{b5dac77c-79dc-f011-8543-000d3a3b9cba}" Name="Test2">
+  <ServiceEndpoint ServiceEndpointId="{2c6fc8b8-53e7-f011-8543-000d3a3b9cba}" Name="Azure Function - Account Created">
     <ConnectionMode>1</ConnectionMode>
     <Contract>8</Contract>
-    <Description>Test2 Desc</Description>
-    <Path></Path>
-    <SolutionNamespace></SolutionNamespace>
-    <UserClaim>1</UserClaim>
-    <IsCustomizable>1</IsCustomizable>
-    <AuthType>4</AuthType>
-    <MessageFormat>2</MessageFormat>
-    <NamespaceFormat>1</NamespaceFormat>
-    <Url>http://example.com</Url>
-    <UseKeyVaultConfiguration>0</UseKeyVaultConfiguration>
-  </ServiceEndpoint>
-  <ServiceEndpoint ServiceEndpointId="{6d37edfa-79dc-f011-8543-000d3a3b9cba}" Name="Test3">
-    <ConnectionMode>1</ConnectionMode>
-    <Contract>8</Contract>
-    <Description>Test description</Description>
     <Path></Path>
     <SolutionNamespace></SolutionNamespace>
     <UserClaim>1</UserClaim>
@@ -25,7 +10,7 @@
     <AuthType>6</AuthType>
     <MessageFormat>2</MessageFormat>
     <NamespaceFormat>1</NamespaceFormat>
-    <Url>http://example.com</Url>
+    <Url>https://func-ppds-demo-dev-001.azurewebsites.net/api/webhook/account-created</Url>
     <UseKeyVaultConfiguration>0</UseKeyVaultConfiguration>
   </ServiceEndpoint>
 </ServiceEndpoints>

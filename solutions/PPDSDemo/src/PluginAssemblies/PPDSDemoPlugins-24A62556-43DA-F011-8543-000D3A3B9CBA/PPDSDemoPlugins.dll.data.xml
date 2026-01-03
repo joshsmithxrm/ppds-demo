@@ -11,5 +11,8 @@
     <PluginType AssemblyQualifiedName="PPDSDemo.Plugins.Plugins.ContactPostUpdatePlugin, PPDSDemo.Plugins, Version=1.0.0.0, Culture=neutral, PublicKeyToken=87a4b0dac59374c6" PluginTypeId="ac39bd88-43da-f011-8543-000d3a3b9cba" Name="PPDSDemo.Plugins.Plugins.ContactPostUpdatePlugin">
       <FriendlyName>ContactPostUpdatePlugin</FriendlyName>
     </PluginType>
+    <PluginType AssemblyQualifiedName="PPDSDemo.Plugins.Plugins.ProcessAccountPlugin, PPDSDemo.Plugins, Version=1.0.0.0, Culture=neutral, PublicKeyToken=87a4b0dac59374c6" PluginTypeId="763149c5-e5e6-f011-8543-000d3a3b9cba" Name="PPDSDemo.Plugins.Plugins.ProcessAccountPlugin">
+      <FriendlyName>PPDSDemo.Plugins.Plugins.ProcessAccountPlugin</FriendlyName>
+    </PluginType>
   </PluginTypes>
 </PluginAssembly>
