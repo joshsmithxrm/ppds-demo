@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "entity": "ppds_city",
+  "columns": {
+    "ppds_name": {
+      "field": "ppds_name",
+      "skip": false,
+      "lookup": null
+    },
+    "ppds_stateid": {
+      "field": "ppds_stateid",
+      "skip": false,
+      "lookup": {
+        "entity": "ppds_state",
+        "matchBy": "field",
+        "keyField": "ppds_abbreviation"
+      }
+    }
+  }
+}

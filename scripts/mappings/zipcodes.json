@@ -1,0 +1,44 @@
+{
+  "version": "1.0",
+  "entity": "ppds_zipcode",
+  "columns": {
+    "ppds_code": {
+      "field": "ppds_code",
+      "skip": false,
+      "lookup": null
+    },
+    "ppds_stateid": {
+      "field": "ppds_stateid",
+      "skip": false,
+      "lookup": {
+        "entity": "ppds_state",
+        "matchBy": "field",
+        "keyField": "ppds_abbreviation"
+      }
+    },
+    "ppds_cityid": {
+      "field": "ppds_cityid",
+      "skip": false,
+      "lookup": {
+        "entity": "ppds_city",
+        "matchBy": "field",
+        "keyField": "ppds_name"
+      }
+    },
+    "ppds_county": {
+      "field": "ppds_county",
+      "skip": false,
+      "lookup": null
+    },
+    "ppds_latitude": {
+      "field": "ppds_latitude",
+      "skip": false,
+      "lookup": null
+    },
+    "ppds_longitude": {
+      "field": "ppds_longitude",
+      "skip": false,
+      "lookup": null
+    }
+  }
+}
