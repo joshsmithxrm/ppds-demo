@@ -3,14 +3,8 @@
 # Uses committed mapping files from scripts/mappings/
 # Uses sp1,sp2 profiles for connection pool load balancing
 #
-# BLOCKED: Waiting on SDK issue #126 (alternate keys with Lookup fields fail to resolve)
-# https://github.com/joshsmithxrm/ppds-sdk/issues/126
-#
-# The composite key for cities (ppds_name,ppds_stateid) includes a Lookup field,
-# which the CLI cannot resolve during key processing. Once #126 is fixed, this script
-# should work for the full states → cities → zipcodes workflow.
-#
-# See also: https://github.com/joshsmithxrm/ppds-sdk/issues/125
+# Full geo-data workflow: states → cities → zipcodes
+# Demonstrates composite keys with lookup fields and explicit column mappings.
 
 param(
     [switch]$Force  # Force re-download and re-extract cached data
@@ -85,7 +79,7 @@ try {
 
     # Phase 2: Extract states CSV
     Write-Host "[2/6] Preparing states CSV..." -ForegroundColor Yellow
-    $statesCsvPath = Join-Path $tmpDir "states.csv"
+    $statesCsvPath = Join-Path $tmpDir "load-states.csv"
 
     if ((Test-Path $statesCsvPath) -and -not $Force) {
         $statesCount = (Import-Csv $statesCsvPath).Count
@@ -105,7 +99,7 @@ try {
 
     # Phase 3: Extract cities CSV
     Write-Host "[3/6] Preparing cities CSV..." -ForegroundColor Yellow
-    $citiesCsvPath = Join-Path $tmpDir "cities.csv"
+    $citiesCsvPath = Join-Path $tmpDir "load-cities.csv"
 
     if ((Test-Path $citiesCsvPath) -and -not $Force) {
         $citiesCount = (Import-Csv $citiesCsvPath).Count
@@ -130,7 +124,7 @@ try {
 
     # Phase 4: Extract zipcodes CSV
     Write-Host "[4/6] Preparing zipcodes CSV..." -ForegroundColor Yellow
-    $zipsMappedPath = Join-Path $tmpDir "zipcodes.csv"
+    $zipsMappedPath = Join-Path $tmpDir "load-zipcodes.csv"
 
     if ((Test-Path $zipsMappedPath) -and -not $Force) {
         Write-Host "      Using cached: $($zipData.Count) zipcodes" -ForegroundColor DarkGray

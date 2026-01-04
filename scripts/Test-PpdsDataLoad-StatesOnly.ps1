@@ -4,7 +4,6 @@
 #
 # This is a simplified test that only loads states (no lookups required).
 # For full geo-data test (states → cities → zipcodes), see Test-PpdsDataLoad-WithMappings.ps1
-# once SDK issues #125 and #126 are resolved.
 
 param(
     [switch]$Force  # Force re-download and re-extract cached data
@@ -79,7 +78,7 @@ try {
 
     # Phase 2: Extract states CSV
     Write-Host "[2/3] Preparing states CSV..." -ForegroundColor Yellow
-    $statesCsvPath = Join-Path $tmpDir "states.csv"
+    $statesCsvPath = Join-Path $tmpDir "load-states.csv"
 
     if ((Test-Path $statesCsvPath) -and -not $Force) {
         $statesCount = (Import-Csv $statesCsvPath).Count

@@ -2,11 +2,8 @@
 # Tests PPDS CLI data load command with geo-data CSV (42K records)
 # Uses sp1,sp2 profiles for connection pool load balancing and throughput verification
 #
-# BLOCKED: This script is waiting on SDK issue #125 (auto-mapping UX improvements)
-# https://github.com/joshsmithxrm/ppds-sdk/issues/125
-#
-# Currently, CSV columns without ppds_ prefix don't auto-match Dataverse attributes,
-# resulting in empty records. Once #125 is resolved, this script should work as-is.
+# This script uses prefix-aware auto-mapping - CSV columns like "abbreviation" and "name"
+# automatically match to ppds_abbreviation and ppds_name without requiring a mapping file.
 
 param(
     [switch]$Force  # Force re-download of CSV even if cached
@@ -86,7 +83,7 @@ try {
 
     # Phase 2: Extract unique states
     Write-Host "[2/7] Extracting unique states..." -ForegroundColor Yellow
-    $statesCsvPath = Join-Path $tmpDir "states_raw.csv"
+    $statesCsvPath = Join-Path $tmpDir "load-states.csv"
 
     if ((Test-Path $statesCsvPath) -and -not $Force) {
         $statesData = Import-Csv $statesCsvPath
@@ -109,7 +106,7 @@ try {
 
     # Phase 3: Extract unique cities (using hashtable for O(n) deduplication)
     Write-Host "[3/7] Extracting unique cities..." -ForegroundColor Yellow
-    $citiesCsvPath = Join-Path $tmpDir "cities_raw.csv"
+    $citiesCsvPath = Join-Path $tmpDir "load-cities.csv"
 
     if ((Test-Path $citiesCsvPath) -and -not $Force) {
         $citiesData = Import-Csv $citiesCsvPath
