@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "entity": "ppds_state",
+  "columns": {
+    "ppds_abbreviation": {
+      "field": "ppds_abbreviation"
+    },
+    "ppds_name": {
+      "field": "ppds_name"
+    }
+  }
+}
