@@ -38,18 +38,11 @@
 #     - POWERPLATFORM_CLIENT_SECRET: your-service-principal-secret
 #
 # Repository Secret (for branch protection bypass):
-#   - AUTOMATION_TOKEN: Fine-grained PAT with 'contents: write' permission
+#   - DEPLOY_KEY: SSH private key (ed25519) added as deploy key with write access
 #
 #     Why needed: Branch protection on 'develop' requires PRs for human changes,
-#     but automated exports should commit directly. The PAT bypasses this rule.
-#
-#     Setup:
-#       1. GitHub Settings → Developer settings → Fine-grained tokens
-#       2. Create token with 'contents: write' for this repo only
-#       3. Add as repository secret named AUTOMATION_TOKEN
-#
-#     For organization repos, you can instead add GitHub Actions to the
-#     ruleset bypass list (no PAT needed). See BRANCHING_STRATEGY.md.
+#     but automated exports should commit directly. Deploy keys can be added as
+#     bypass actors on repository rulesets.
 #
 # =============================================================================
 
@@ -117,8 +110,9 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: develop
-          fetch-depth: 0  # Full history for tagging
-          token: ${{ secrets.AUTOMATION_TOKEN }}  # PAT to bypass branch protection
+          fetch-depth: 0
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+          persist-credentials: true
 
       - name: Setup PAC CLI
         uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v1

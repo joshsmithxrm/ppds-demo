@@ -16,7 +16,7 @@
     <PackageReference Include="Microsoft.Identity.Web" Version="4.2.0" />
     <PackageReference Include="PPDS.Dataverse" Version="1.0.0-beta.1" />
     <!-- Swashbuckle 6.x is stable; 10.x is major breaking change -->
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.0" />
   </ItemGroup>
 
 </Project>
