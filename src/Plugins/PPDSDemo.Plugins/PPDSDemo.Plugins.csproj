@@ -27,7 +27,7 @@
     <PackageReference Include="PPDS.Plugins" Version="2.0.0" />
     <!-- System.Text.Json 8.x is latest compatible with net462; 10.x requires net8.0+ -->
     <PackageReference Include="System.Net.Http" Version="4.3.4" />
-    <PackageReference Include="System.Text.Json" Version="8.0.6" />
+    <PackageReference Include="System.Text.Json" Version="10.0.1" />
   </ItemGroup>
 
   <ItemGroup>
