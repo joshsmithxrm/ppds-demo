@@ -37,21 +37,12 @@
 #   Secrets:
 #     - POWERPLATFORM_CLIENT_SECRET: your-service-principal-secret
 #
-# GitHub App (for branch protection bypass):
-#   Variable:
-#     - APP_ID: GitHub App ID
-#   Secret:
-#     - APP_PRIVATE_KEY: GitHub App private key (.pem file contents)
+# Repository Secret (for branch protection bypass):
+#   - DEPLOY_KEY: SSH private key (ed25519) added as deploy key with write access
 #
 #     Why needed: Branch protection on 'develop' requires PRs for human changes,
-#     but automated exports should commit directly. The GitHub App is added as
-#     a bypass actor on the branch ruleset.
-#
-#     Benefits over PAT:
-#       - Scoped permissions (only contents:write)
-#       - No expiration/rotation needed
-#       - Clear audit trail (shows as app, not user)
-#       - Only workflows using the app can bypass
+#     but automated exports should commit directly. Deploy keys can be added as
+#     bypass actors on repository rulesets.
 #
 # =============================================================================
 
@@ -115,19 +106,13 @@ jobs:
       noise_filtered: ${{ steps.analyze.outputs.noise-count }}
 
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           ref: develop
-          fetch-depth: 0  # Full history for tagging
-          token: ${{ steps.app-token.outputs.token }}  # GitHub App token to bypass branch protection
+          fetch-depth: 0
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+          persist-credentials: true
 
       - name: Setup PAC CLI
         uses: joshsmithxrm/ppds-alm/.github/actions/setup-pac-cli@v1
