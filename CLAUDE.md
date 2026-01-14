@@ -442,10 +442,8 @@ pac modelbuilder build --outdirectory src/Entities/PPDSDemo.Entities
 
 ### Strategy (Why)
 
-- [ALM_OVERVIEW.md](docs/strategy/ALM_OVERVIEW.md) - ALM philosophy and approach
-- [BRANCHING_STRATEGY.md](docs/strategy/BRANCHING_STRATEGY.md) - Git workflow details
-- [ENVIRONMENT_STRATEGY.md](docs/strategy/ENVIRONMENT_STRATEGY.md) - Dev/QA/Prod setup
-- [PIPELINE_STRATEGY.md](docs/strategy/PIPELINE_STRATEGY.md) - CI/CD design
+Strategy documentation (ALM, branching, environments, pipelines) has been moved to
+ppdsw/Projects/PPDS/DocsCleanup for consolidation into ppds-docs.
 
 ### Reference (How)
 
