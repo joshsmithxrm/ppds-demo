@@ -127,7 +127,7 @@ jobs:
 
       - name: Download latest artifact (from develop)
         if: steps.source.outputs.run-id == ''
-        uses: dawidd6/action-download-artifact@v12
+        uses: dawidd6/action-download-artifact@v14
         with:
           workflow: ci-build.yml
           branch: develop
