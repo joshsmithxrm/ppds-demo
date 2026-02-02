@@ -22,7 +22,7 @@
     <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />
     <PackageReference Include="Azure.Identity" Version="1.17.1" />
     <!-- Microsoft.Extensions.Http 8.x is latest for net8.0; 10.x requires net10 -->
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
   </ItemGroup>
 
   <ItemGroup>
