@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<ImportExportXml version="9.2.25123.166" SolutionPackageVersion="9.2" languagecode="1033" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.25123.166" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.26012.00155">
+<ImportExportXml version="9.2.26012.155" SolutionPackageVersion="9.2" languagecode="1033" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.26012.155" OrganizationSchemaType="Standard" CRMServerServiceabilityVersion="9.2.26012.00156">
   <SolutionManifest>
     <UniqueName>PPDSDemo</UniqueName>
     <LocalizedNames>
@@ -8,7 +8,7 @@
     <Descriptions>
       <Description description="Demo solution showcasing the Power Platform Developer Suite VS Code extension" languagecode="1033" />
     </Descriptions>
-    <Version>1.0.20260212.89</Version>
+    <Version>1.0.20260214.91</Version>
     <Managed>2</Managed>
     <Publisher>
       <UniqueName>PPDSDemoPublisher</UniqueName>
