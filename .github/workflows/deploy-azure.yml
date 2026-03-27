@@ -116,13 +116,13 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Download Web API artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: api
           path: ${{ github.workspace }}/publish/api
 
       - name: Download Functions artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: functions
           path: ${{ github.workspace }}/publish/functions
