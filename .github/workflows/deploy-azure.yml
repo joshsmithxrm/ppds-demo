@@ -58,13 +58,13 @@ jobs:
         run: dotnet publish src/Functions/PPDSDemo.Functions/PPDSDemo.Functions.csproj -c Release -o ${{ github.workspace }}/publish/functions --no-build
 
       - name: Upload Web API artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: api
           path: ${{ github.workspace }}/publish/api
 
       - name: Upload Functions artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: functions
           path: ${{ github.workspace }}/publish/functions
