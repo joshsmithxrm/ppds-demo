@@ -54,7 +54,7 @@ Run the PowerShell script for automated setup:
 | ☑ Require branches to be up to date before merging | Enabled |
 | Status checks that are required | `Validation Status` |
 
-> **Note:** The `Validation Status` check appears after the PR validation workflow has run at least once.
+> **Note:** The `Validation Status` check appears after the PR validation workflow has run at least once. See [When PR validation runs](#when-pr-validation-runs).
 
 #### Additional Settings
 
@@ -106,6 +106,27 @@ Click **Create** to save the rule.
 
 ---
 
+## When PR Validation Runs
+
+`Validation Status` is the final job of `.github/workflows/pr-validate.yml`. The workflow runs on **every** pull request to `develop` or `main`, so the required check always reports, including on PRs that only change documentation.
+
+| Job | Runs when |
+|-----|-----------|
+| Detect Changes | Every PR and manual run |
+| Branch Policy | Every PR |
+| Dependency Review | Every PR |
+| Build & Test Code | The PR changes a relevant path (manual runs: always, unless `build_code` is `false`) |
+| Validate Solution | The PR changes a relevant path (manual runs: always) |
+| Validation Status | Always |
+
+Relevant paths: `solutions/PPDSDemo/src/**`, `src/**`, `*.sln` (repository root), `**/*.csproj`, `.github/**`, `tools/**`.
+
+A PR that changes only other files (for example `README.md`, `CLAUDE.md`, `docs/**` or `.claude/**`) skips the build and solution jobs, and `Validation Status` passes once branch policy and dependency review pass. `Validation Status` fails if any job that ran failed or was cancelled, or if a job that should have run was skipped (for example after change detection failed).
+
+> **Do not add a `paths:` filter to the `pull_request` trigger.** A PR that the filter excludes never runs the workflow, the required check never reports, and the PR cannot be merged without bypassing the ruleset. Change the relevant-path list in the `changes` job instead.
+
+---
+
 ## Verification
 
 After setup, verify protection is working:
@@ -146,7 +167,11 @@ git push origin test/protection-check
 
 The status check must run at least once before it appears in the dropdown.
 
-**Fix:** Create a test PR that modifies solution or code files to trigger the workflow.
+**Fix:** Open any PR to `develop` or `main`; the workflow runs on every PR.
+
+### "Validation Status" stuck on "Expected — Waiting for status to be reported"
+
+The workflow did not run for the PR's latest commit. Check that `pr-validate.yml` on the base branch has no `paths:` filter on its `pull_request` trigger, and that the PR targets `develop` or `main`. Push a new commit or re-run the workflow to report the check.
 
 ### Nightly export failing on develop
 

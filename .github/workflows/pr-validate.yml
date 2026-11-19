@@ -5,8 +5,18 @@
 # builds and tests .NET code, and optionally runs the Solution Checker.
 #
 # Triggers:
-#   - Pull requests to develop or main that modify solution or code files
+#   - Every pull request to develop or main
 #   - Manual workflow dispatch
+#
+# Change detection:
+#   The workflow runs on every PR so the required "Validation Status" check
+#   always reports. The 'changes' job diffs the PR against its base; the
+#   build and solution jobs run only when a relevant path changed:
+#     solutions/PPDSDemo/src/**, src/**, *.sln, **/*.csproj, .github/**, tools/**
+#   Branch policy and dependency review run on every PR. A PR that touches
+#   only other files (docs, README, CLAUDE.md, .claude/**) skips the build
+#   and solution jobs and "Validation Status" passes.
+#   Manual dispatch always runs the build and solution jobs.
 #
 # Validation checks:
 #   - .NET code builds successfully (plugins, workflow activities, etc.)
@@ -27,18 +37,13 @@
 name: 'PR: Validate Solution'
 
 on:
-  # Validate PRs that modify solution or code files
+  # Validate every PR. No 'paths:' filter here: a filtered-out PR never
+  # reports the required "Validation Status" check and cannot be merged.
+  # Relevant-path detection happens in the 'changes' job instead.
   pull_request:
     branches:
       - develop
       - main
-    paths:
-      - 'solutions/PPDSDemo/src/**'
-      - 'src/**'
-      - '*.sln'
-      - '**/*.csproj'
-      - '.github/**'
-      - 'tools/**'
 
   # Manual trigger
   workflow_dispatch:
@@ -93,6 +98,72 @@ env:
 
 jobs:
   # ============================================
+  # Pre-check: Detect Relevant Changes
+  # ============================================
+  # Outputs relevant=true when the PR touches a path that needs the build
+  # and solution jobs, or when the run is not a PR (manual dispatch).
+  # Keep RELEVANT_PATHS in sync with the path list in the header comment.
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    outputs:
+      relevant: ${{ steps.detect.outputs.relevant }}
+
+    steps:
+      - name: Checkout repository
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect relevant changes
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Same paths the pull_request 'paths:' filter used to list:
+          #   solutions/PPDSDemo/src/**  src/**  .github/**  tools/**
+          #   *.sln (repository root only)   **/*.csproj (anywhere)
+          RELEVANT_PATHS: '^(solutions/PPDSDemo/src/|src/|\.github/|tools/)|^[^/]+\.sln$|\.csproj$'
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request ($EVENT_NAME) - running all validation jobs"
+            echo "relevant=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Three-dot diff: changes on the PR branch since it left the base,
+          # the same comparison GitHub uses for 'paths:' filters.
+          # --no-renames lists both sides of a move, so moving a file out of a
+          # relevant path still counts; core.quotePath=false prints non-ASCII
+          # paths verbatim so the anchored patterns below match them.
+          if ! CHANGED=$(git -c core.quotePath=false diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA"); then
+            echo "::warning::Could not diff $BASE_SHA...$HEAD_SHA - running all validation jobs"
+            echo "relevant=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED" | sed 's/^/  /'
+
+          MATCHED=$(echo "$CHANGED" | grep -E "$RELEVANT_PATHS" || true)
+          if [ -n "$MATCHED" ]; then
+            echo ""
+            echo "Relevant changes:"
+            echo "$MATCHED" | sed 's/^/  /'
+            echo "relevant=true" >> $GITHUB_OUTPUT
+          else
+            echo ""
+            echo "::notice::No solution, code, workflow or tools changes - build and solution validation skipped"
+            echo "relevant=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ============================================
   # Job 0: Branch Policy Enforcement
   # ============================================
   branch-policy:
@@ -103,10 +174,14 @@ jobs:
     steps:
       - name: Validate PR branch policy
         if: github.base_ref == 'main'
+        # Branch names are passed through env, never interpolated into the
+        # script: a head branch name is chosen by the PR author.
+        env:
+          SOURCE: ${{ github.head_ref }}
+          TARGET: ${{ github.base_ref }}
         run: |
-          SOURCE="${{ github.head_ref }}"
           echo "PR source branch: $SOURCE"
-          echo "PR target branch: ${{ github.base_ref }}"
+          echo "PR target branch: $TARGET"
 
           if [[ "$SOURCE" == "develop" || "$SOURCE" =~ ^hotfix/ ]]; then
             echo "✓ Branch '$SOURCE' is allowed to target main"
@@ -126,16 +201,20 @@ jobs:
           fi
 
       - name: Branch policy passed
+        env:
+          TARGET: ${{ github.base_ref }}
         run: |
-          if [ "${{ github.base_ref }}" = "main" ]; then
+          if [ "$TARGET" = "main" ]; then
             echo "✓ Branch policy check passed for PR to main"
           else
-            echo "✓ No branch restriction for PRs to ${{ github.base_ref }}"
+            echo "✓ No branch restriction for PRs to $TARGET"
           fi
 
   # ============================================
   # Job 1: Dependency Review (Security)
   # ============================================
+  # Runs on every PR, not only on relevant changes: it is cheap, and it
+  # inspects dependency manifests wherever they are in the diff.
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
@@ -160,7 +239,8 @@ jobs:
   build-code:
     name: Build & Test Code
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.build_code != 'false' }}
+    needs: [changes]
+    if: ${{ needs.changes.outputs.relevant == 'true' && github.event.inputs.build_code != 'false' }}
 
     outputs:
       build-succeeded: ${{ steps.build.outputs.build-succeeded }}
@@ -204,8 +284,11 @@ jobs:
   validate-solution:
     name: Validate Solution
     runs-on: ubuntu-latest
-    needs: [build-code]
-    if: always()
+    needs: [changes, build-code]
+    # always() keeps the existing behaviour of running even when build-code
+    # failed or was disabled; the output check skips it when nothing relevant
+    # changed (or when 'changes' did not succeed, leaving the output empty).
+    if: always() && needs.changes.outputs.relevant == 'true'
 
     outputs:
       managed-path: ${{ steps.pack-managed.outputs.solution-path }}
@@ -399,43 +482,85 @@ jobs:
   # ============================================
   # Job 4: Final Status Check
   # ============================================
+  # The required status check. Always runs so it reports on every PR.
+  # Each job is compared with what it should have done:
+  #   - 'changes' must succeed; its output decides whether the build and
+  #     solution jobs were expected, so nothing else can be trusted without it.
+  #   - branch-policy and dependency-review must succeed on every PR.
+  #   - build-code must succeed when relevant files changed (unless disabled
+  #     by the build_code dispatch input); validate-solution must succeed
+  #     when relevant files changed.
+  #   - A job that is not expected to run must be skipped.
+  # A job skipped when it was expected (e.g. after an upstream failure),
+  # or any failed or cancelled job, fails this check.
   status-check:
     name: Validation Status
     runs-on: ubuntu-latest
-    needs: [branch-policy, dependency-review, build-code, validate-solution]
+    needs: [changes, branch-policy, dependency-review, build-code, validate-solution]
     if: always()
 
     steps:
       - name: Check overall status
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          RELEVANT: ${{ needs.changes.outputs.relevant }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BRANCH_POLICY_RESULT: ${{ needs.branch-policy.result }}
+          DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
+          BUILD_RESULT: ${{ needs.build-code.result }}
+          VALIDATE_RESULT: ${{ needs.validate-solution.result }}
         run: |
-          BRANCH_POLICY_RESULT="${{ needs.branch-policy.result }}"
-          DEPENDENCY_RESULT="${{ needs.dependency-review.result }}"
-          BUILD_RESULT="${{ needs.build-code.result }}"
-          VALIDATE_RESULT="${{ needs.validate-solution.result }}"
-
+          echo "Pull request: $IS_PR"
+          echo "Change detection result: $CHANGES_RESULT (relevant changes: ${RELEVANT:-unknown})"
           echo "Branch policy result: $BRANCH_POLICY_RESULT"
           echo "Dependency review result: $DEPENDENCY_RESULT"
           echo "Build job result: $BUILD_RESULT"
           echo "Validate job result: $VALIDATE_RESULT"
+          echo ""
 
-          if [ "$BRANCH_POLICY_RESULT" = "failure" ]; then
-            echo "::error::Branch policy check failed - PR source branch not allowed to target this branch"
+          FAILED=0
+
+          # check_job <label> <result> <should-run: true|false> <failure message>
+          check_job() {
+            local label="$1" result="$2" should_run="$3" message="$4"
+            if [ "$should_run" = "true" ]; then
+              if [ "$result" = "skipped" ]; then
+                echo "::error::$label was required but skipped - an upstream job did not succeed"
+                FAILED=1
+              elif [ "$result" != "success" ]; then
+                echo "::error::$message ($label: $result)"
+                FAILED=1
+              fi
+            elif [ "$result" != "skipped" ]; then
+              echo "::error::$label was not expected to run but finished as '$result'"
+              FAILED=1
+            fi
+          }
+
+          if [ "$CHANGES_RESULT" != "success" ] || { [ "$RELEVANT" != "true" ] && [ "$RELEVANT" != "false" ]; }; then
+            echo "::error::Change detection did not complete ($CHANGES_RESULT) - cannot tell which validation jobs were required"
             exit 1
           fi
 
-          if [ "$DEPENDENCY_RESULT" = "failure" ]; then
-            echo "::error::Dependency review failed - vulnerable or unlicensed dependencies detected"
+          BUILD_EXPECTED=false
+          if [ "$RELEVANT" = "true" ] && [ "${{ env.BUILD_CODE }}" != "false" ]; then
+            BUILD_EXPECTED=true
+          fi
+
+          check_job "Branch Policy" "$BRANCH_POLICY_RESULT" "$IS_PR" \
+            "Branch policy check failed - PR source branch not allowed to target this branch"
+          check_job "Dependency Review" "$DEPENDENCY_RESULT" "$IS_PR" \
+            "Dependency review failed - vulnerable or unlicensed dependencies detected"
+          check_job "Build & Test Code" "$BUILD_RESULT" "$BUILD_EXPECTED" \
+            "Code build failed"
+          check_job "Validate Solution" "$VALIDATE_RESULT" "$RELEVANT" \
+            "Solution validation failed"
+
+          if [ "$FAILED" -ne 0 ]; then
             exit 1
           fi
 
-          if [ "$BUILD_RESULT" = "failure" ]; then
-            echo "::error::Code build failed"
-            exit 1
+          if [ "$RELEVANT" = "false" ]; then
+            echo "No solution, code, workflow or tools changes - build and solution validation not required."
           fi
-
-          if [ "$VALIDATE_RESULT" = "failure" ]; then
-            echo "::error::Solution validation failed"
-            exit 1
-          fi
-
           echo "All validation checks passed!"
