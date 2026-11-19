@@ -149,7 +149,7 @@ This repository includes GitHub Actions workflows for Power Platform ALM:
 | **ci-export.yml** | Nightly / Manual | Exports from Dev with noise filtering |
 | **cd-qa.yml** | Push to develop | Deploys to QA environment |
 | **cd-prod.yml** | Push to main | Deploys managed solution to Production |
-| **pr-validation.yml** | Pull requests | Validates solution builds correctly |
+| **pr-validate.yml** | Every pull request to develop or main | Branch policy and dependency review on every PR; builds and validates the solution when solution, code, workflow or tools files change |
 
 See [docs/strategy/PIPELINE_STRATEGY.md](docs/strategy/PIPELINE_STRATEGY.md) for details.
 

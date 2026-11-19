@@ -145,6 +145,8 @@ The PR will trigger `pr-validate.yml`:
 - Solution packing validation
 - Solution Checker (if configured)
 
+Build, packing and Solution Checker run only when the PR changes solution, code, workflow or tools files; the required `Validation Status` check reports on every PR either way.
+
 **Wait for all checks to pass** before merging.
 
 ### 6. Merge to Main
